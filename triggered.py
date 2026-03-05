@@ -14,9 +14,7 @@ TRIGGER_WINDOW = 5.0
 AI_NAMES_POOL = ['Mecha-Wyatt', 'Cyber-Doc', 'Holo-Jesse', 'Robo-Calamity', 'Synth-Billy', 'Auto-Annie', 'Bot-Cassidy', 'Gear-Wayne']
 
 def get_local_ip():
-    """Attempts to find the computer's local network IP address to share with players."""
     try:
-        # We don't actually send data, just use this to find the primary network interface
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
@@ -33,16 +31,31 @@ def calculate_thumper(age, height, weight):
 
 def print_instructions():
     print(r"""
-               _______
-           _.-'_______'-._
-         .'               '.
-         `-----._____.-----`
-               / o   o \
-               |   >   |
-               \ `---' /
-                |-----|
-                |XXXXX|
-                `-----`
+                 _.-'~~~~~~`-._
+               /`              `\
+              /                  \
+             |________....________|
+             `---.|.------.|.---`
+                  |  _    _  |
+                  | |O|  |O| |
+                  | '--''--' |
+                  |  ,-..-,  |
+                  |  '----'  |
+                  '.________.'
+                    |      |
+                  _.|      |._
+                /`  |______|  `\
+               /                \
+    """)
+    print(r"""
+      _______   _                               _ 
+     |__   __| (_)                             | |
+        | |_ __ _  __ _  __ _  ___ _ __ ___  __| |
+        | | '__| |/ _` |/ _` |/ _ \ '__/ _ \/ _` |
+        | | |  | | (_| | (_| |  __/ | |  __/ (_| |
+        |_|_|  |_|\__, |\__, |\___|_|  \___|\__,_|
+                   __/ | __/ |                    
+                  |___/ |___/                     
     """)
     print("="*55)
     print(" "*10 + "HOW TO SURVIVE THE STANDOFF")
@@ -55,6 +68,7 @@ def print_instructions():
     print("5. If there ain't no match, the highest card takes the pot automatically.")
     print("6. MISFIRE: If you type 't' when there's no match, you lose the round!")
     print("7. The dealer always wins a tie. House rules.")
+    print("8. DEALER PENALTY: If the dealer misfires, the cards are scattered to the others!")
     print("="*55 + "\n")
     input("Press ENTER when you've read the rules and are ready to ride...")
 
@@ -279,13 +293,28 @@ class TriggeredServer:
                 with self.lock:
                     self.trigger_phase = False
                     if self.trigger_calls:
-                        self.broadcast({'msg': f"Misfire! Someone got trigger-happy with no match. Dealer {dealer['name']} takes the pot."})
-                        winner = dealer
+                        self.trigger_calls.sort(key=lambda x: x[0])
+                        first_trigger_name = self.trigger_calls[0][1]
+                        
+                        if first_trigger_name == dealer['name']:
+                            self.broadcast({'msg': f"Misfire! The Dealer ({dealer['name']}) drew on a ghost!"})
+                            self.broadcast({'msg': f"The dealer loses! {pot} cards are scattered randomly to the other players."})
+                            other_players = [p for p in self.players if p['name'] != dealer['name']]
+                            if other_players:
+                                for _ in range(pot):
+                                    random.choice(other_players)['score'] += 1
+                            winner = None # No single winner to assign the pot to
+                        else:
+                            self.broadcast({'msg': f"Misfire! {first_trigger_name} got trigger-happy with no match. Dealer {dealer['name']} takes the pot."})
+                            winner = dealer
                     else:
                         winner = self.evaluate_high_card(round_cards, dealer)
 
-            winner['score'] += pot
-            self.broadcast({'msg': f"{winner['name']} wins the round and collects {pot} cards!\n"})
+            if winner:
+                winner['score'] += pot
+                self.broadcast({'msg': f"{winner['name']} wins the round and collects {pot} cards!\n"})
+            else:
+                self.broadcast({'msg': "The round ends in chaos! Cards distributed.\n"})
             
             self.round_num += 1
             dealer_idx = (dealer_idx + 1) % len(self.players)
@@ -392,7 +421,6 @@ if __name__ == "__main__":
                 
         port = int(input("Port to host on (e.g., 5555): "))
         
-        # Display the local IP for the Host to share
         local_ip = get_local_ip()
         print("\n" + "="*50)
         print(" SERVER UP AND RUNNING!")
