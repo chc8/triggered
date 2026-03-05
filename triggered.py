@@ -36,8 +36,8 @@ def print_instructions():
                 |          |
                 |__________|
                 |          |
-                |   .44    |
-                |  MAGNUM  |
+                |   .45    |
+                |   COLT   |
                 |          |
                 |          |
                 |          |
