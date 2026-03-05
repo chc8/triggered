@@ -1,4 +1,21 @@
-def game_loop(self, first_dealer):
+Prompt:
+There is a problem that needs to be fixed.  After the cards are turned over after a "CLICK CLICK" the player is asked to "TYPE 't' AND HIT ENTER IF YOU SEE A MATCH!", but if there is no match to the bullseye, then there is no reason to type 't', the player with the highest card wins.  
+
+Response:
+You are completely right. Blaring a command to type 't' every single round makes it feel like the players are *supposed* to do it, which is confusing when there isn't actually a match.
+
+We run into a fun game design quirk here because it's a text-based game. In real life, everyone sees the cards instantly, realizes there is no match, and immediately looks for the high card. In a terminal, the computer calculates the result in milliseconds. If we don't force the server to pause for a few seconds after printing the cards, the computer will instantly announce the high card winner before human players even have time to read what cards were dealt!
+
+To fix this, we need to remove the misleading prompt but keep the 3.5-second `TRIGGER_WINDOW`. This gives players time to read the text, mentally check against the bullseye, and naturally realize "Okay, no match here," before the server steps in and automatically awards the pot to the highest card.
+
+Here is the updated `game_loop` method for your `TriggeredServer` class.
+
+### The Fix
+
+Replace the existing `game_loop` method in your code with this updated version:
+
+```python
+    def game_loop(self, first_dealer):
         deck = create_deck()
         random.shuffle(deck)
         
@@ -95,3 +112,13 @@ def game_loop(self, first_dealer):
         standings = "\nFINAL SCORES:\n" + "\n".join([f"{p['name']}: {p['score']} cards" for p in self.players])
         self.broadcast({'msg': standings})
         sys.exit()
+
+```
+
+### What Changed?
+
+* **Removed the confusing prompt:** The server no longer yells at players to type 't' every round.
+* **Natural game flow:** The cards are printed, and the game silently waits 3.5 seconds. If a player spots a match, they know they can still type 't'. If nobody types anything, the game cleanly transitions into announcing the high card winner.
+* **False trigger penalty:** If a player gets trigger-happy and types 't' when there *isn't* a match, they lose the round and the dealer collects the cards (as per your rule about the dealer winning ties/conflicts).
+
+Would you like me to add a quick "How to Play" text block that prints out to all the clients right before the first round starts, so everyone remembers the rules?
