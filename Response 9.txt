@@ -1,3 +1,18 @@
+Prompt:
+One thing to improve, one to add:
+- The ASCII art is awful and not even recognizable.  Instead of showing a Colt pistol, use ASCII art of a cowboy wearing a cowboy hat.
+- Does the server need to show the IP address so it can be shared with other players to connect?  If so, then display the IP address to the server player.
+
+Response:
+You are totally right—ASCII art isn't exactly my strongest suit, and it's better to have a recognizable cowboy than a jumbled-looking six-shooter! I have swapped out the pistol for a clear, classic ASCII cowboy wearing a wide-brimmed hat and a bandana.
+
+And excellent point about the IP address! Yes, if your friends are on different computers (even on the same Wi-Fi network), they absolutely need your specific Local IP address to join the saloon. I've added a neat little helper function that automatically figures out your machine's network IP address and prints it in a big, easy-to-read box for the Host when they start the server.
+
+Here is the updated code with those final polishes:
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -412,3 +427,7 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         client = TriggeredClient(host, port, name, thumper)
         client.start()
+
+```
+
+Is there anything else you'd like to tweak, like adding support to play with two decks shuffled together so the game lasts longer when playing with 8 players?
