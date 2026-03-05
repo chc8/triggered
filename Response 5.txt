@@ -1,3 +1,28 @@
+Prompt: 
+Works well, just some things left to tidy up:
+- The game should allow for 0 to 7 AI players.
+- The game should only be allowed to start once a total of players (AI or not AI players) is at least 2.
+- All the player thumper power values should be displayed before the first round starts.  AI thumper powers should be similar to human thumper powers. 
+- When flipping cards to show who has which cards, each player name and card value should be displayed on their own line, not on the same line.  For example if three players, then three lines and each line has a player name and their card value.
+- The delay to wait for someone to say/enter trigger needs to be longer, about 5 seconds.
+- Instructions about how to play the game should be provided when the game starts, but let the player affirm they read the instructions before the first round starts.
+- Each round should be numbered to show how many rounds have been played.
+- At the end of the game there should be an option to start a new game or exit.
+
+Response:
+These are excellent refinements that will make the game feel much more polished, professional, and accessible.
+
+To achieve this, I have made a few structural changes:
+
+1. **Separated the Server's input from the Client's input:** Previously, the server asked the host to press "ENTER" to start, which caused a messy overlap because the client also wanted to read inputs. Now, the Host controls the game flow entirely by typing commands like `start`, `restart`, or `exit` directly into their client.
+2. **Added an Instructions Screen:** The game prints out the rules locally on the client's screen and waits for them to press ENTER before connecting them to the lobby.
+3. **Card Formatting & Timers:** Adjusted the card display to use line breaks and increased the `TRIGGER_WINDOW` to 5 seconds. AI players now generate realistic human Thumper Powers (roughly between 90 and 220) and have their reaction times widened to fit the 5-second window.
+
+Here is the fully updated code.
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -353,3 +378,13 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         client = TriggeredClient(host, port, name, thumper)
         client.start()
+
+```
+
+### Flow Changes:
+
+* When starting the app, human players put in their stats, and then the **Instructions pop up automatically**.
+* Once they hit Enter, they connect to the Lobby.
+* The game does *not* start automatically. **The Host must type `start` and hit enter.** (If there aren't at least 2 players in the lobby, it will complain and wait).
+* During the game, **Rounds are numbered**, and cards are neatly formatted in a list.
+* After the game finishes, it will explicitly ask players to **type `restart` or `exit**`. Typing restart wipes the scores, generates a fresh deck, re-shows everyone's Thumper scores, and jumps straight into a new Round 1.
