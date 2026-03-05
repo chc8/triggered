@@ -1,3 +1,18 @@
+Prompt:
+There is still a problem after Click Click and the cards are flipped over.  The game stops responding there and it doesn't choose a winner for the round based on high card value.
+
+Response:
+Good catch, and I apologize for missing that! I know exactly what happened: it's a classic **threading deadlock**.
+
+When there is no match, the server locks its data to safely figure out the high card. However, inside that locked block of code, it calls the `broadcast()` function to announce the winner. The `broadcast()` function *also* tries to lock the data before sending messages. Because standard locks can't be acquired twice by the same thread, the server freezes itself forever right there, waiting for a lock it already holds.
+
+The fix is very simple: we change the standard `threading.Lock()` to a `threading.RLock()` (Reentrant Lock), which allows the same thread to acquire the lock multiple times without getting stuck.
+
+Here is the fully corrected code.
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -280,3 +295,7 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         client = TriggeredClient(host, port, name, thumper)
         client.start()
+
+```
+
+Run this version, and the game loop will evaluate high cards and flow seamlessly to the next round without freezing. Would you like to try running this to confirm it resolves the hang, or is there another feature you want to build in next?
