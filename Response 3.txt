@@ -1,3 +1,21 @@
+prompt:
+That didn't work, please fix it.  Also please provide the new function along with the code in whole.
+
+Response:
+I apologize for the confusion. You are completely right—the game should flow naturally without stalling or waiting for input when there's no match to be made.
+
+To fix this properly, I have restructured the `game_loop` to explicitly check if a match exists *before* deciding how to proceed:
+
+1. **If a match exists:** The game waits 3.5 seconds to see if anyone triggers.
+2. **If NO match exists:** The game skips the long trigger window, pauses for 2 seconds (just so human players have time to read what cards were dealt on their screen), and then immediately evaluates the high card winner.
+
+I also added a helper function, `evaluate_high_card`, to handle the high card logic cleanly without duplicating code, and added a socket setting (`SO_REUSEADDR`) so you don't get network errors when you restart the script multiple times to test.
+
+Here is the complete, updated Python code.
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -292,3 +310,9 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         client = TriggeredClient(host, port, name, thumper)
         client.start()
+
+```
+
+---
+
+Run that and let me know how the pacing feels! Would you like me to look into adding support for multiple standard decks if you have an 8-player lobby so the game runs longer?
