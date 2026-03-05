@@ -1,3 +1,16 @@
+Prompt:
+Easy thing to fix, for the ASCII art of the bullet, it should be a Colt .45 bullet, not a .44 Magnum because that is too modern.
+
+Response:
+You are completely right on the history there—the .44 Magnum didn't show up until the 1950s, whereas the .45 Colt was introduced in 1873 specifically for the Colt Single Action Army revolver. That is a much better fit for the Old West theme!
+
+I have updated the ASCII art to proudly display the classic **.45 COLT**.
+
+Here is your updated code:
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -36,8 +49,8 @@ def print_instructions():
                 |          |
                 |__________|
                 |          |
-                |   .44    |
-                |  MAGNUM  |
+                |   .45    |
+                |   COLT   |
                 |          |
                 |          |
                 |          |
@@ -437,3 +450,7 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         client = TriggeredClient(host, port, name, thumper)
         client.start()
+
+```
+
+Is there anything else you'd like to adjust, such as how the final scoreboard looks?
