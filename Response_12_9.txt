@@ -1,3 +1,22 @@
+Prompt:
+Game works, there are a couple things to address:
+- The game rules inside the graphical window do not fit, some lines are cut off.  All the text should fit within the graphical window.
+- The player names do not fit well on top of the cards.  The names should be wrapped to fit within the width of the players card, and be above the card.  The name should not overlap anything else graphically.
+
+Response:
+Howdy partner! Those are the exact kind of UI polishes that take a game from a raw prototype to a finished product.
+
+You're completely right. The title screen rules were spilling off the edge because I didn't wrap them, and trying to cram a name like "Robo-Calamity" onto a single line above a tiny card was never going to work.
+
+Here is how I've wrangled those issues:
+
+1. **Title Screen Formatting:** I manually formatted the rules list on the title screen into shorter, punchy lines and widened the margins so everything fits perfectly within the 640px window.
+2. **Dynamic Name Wrapping:** I built a new helper function (`draw_wrapped_name`) that specifically calculates the width of the micro card, slices the player's name into multiple short lines (like "Mecha-" / "Wyatt"), and centers them dynamically *above* the card.
+3. **Grid Adjustments:** Because names can now be two or three lines tall, I increased the vertical spacing between the rows of micro cards so the names won't overlap the cards above them.
+
+Here is the **complete, fully updated** `triggered.py` code. Just copy, replace, and run!
+
+```python
 import socket
 import threading
 import json
@@ -709,4 +728,8 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         
         client = PygameTriggeredClient(host, port, name, thumper, is_host)
-        client.start()
+        client.start() 
+
+```
+
+Would you like me to show you how to pull all the startup questions (name, weight, host vs client) into Pygame as well, so we can run the whole game seamlessly without touching the terminal?
