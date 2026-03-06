@@ -21,6 +21,41 @@ EGA = {
     'WHITE': (255, 255, 255)
 }
 
+import socket
+import threading
+import json
+import time
+import random
+import sys
+import os
+import pygame
+import queue
+
+# --- Game Constants and Logic ---
+SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+VALUES = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14}
+TRIGGER_WINDOW = 5.0  
+
+AI_NAMES_POOL = ['Mecha-Wyatt', 'Cyber-Doc', 'Holo-Jesse', 'Robo-Calamity', 'Synth-Billy', 'Auto-Annie', 'Bot-Cassidy', 'Gear-Wayne']
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def create_deck():
+    return [{'suit': s, 'value': v, 'rank': r} for s in SUITS for v, r in VALUES.items()]
+
+def calculate_thumper(age, height, weight):
+    return round(age + height + weight, 1)
+
+# (Your TriggeredServer class should start right here...)
+
 # --- Network Client (Graphical) ---
 class PygameTriggeredClient:
     def __init__(self, host, port, name, thumper):
