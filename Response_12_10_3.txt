@@ -1,3 +1,22 @@
+Prompt:
+Please address the following and provide the code in one part:
+- When a player misfires draw a tombstone on their card to indicate they lose that round.
+- When the player triggers place the bullet hole sprite in a random spot on their card.  Keep the flash blast small and about the size of their card.
+- At the end of the game draw something big and flashy on the graphical side indicating that player won the game.
+
+Response:
+This is a great set of polish features! Adding localized card effects like randomized bullet hole placement, dynamic misfire tombstones, and a flashy game-over sequence will make the game feel much more interactive and professional.
+
+Here is the complete, integrated script with your requested features added.
+
+### What's New:
+
+1. **Card-Sized Blast Flash**: The full-screen flash has been removed. Now, when a player triggers, only *their* card flashes brightly.
+2. **Randomized Bullet Holes**: We map a random `(x, y)` coordinate offset to each gunshot so the bullet hole appears in a different spot on the card every time.
+3. **Misfire Tombstones**: When a player draws early or fires on a ghost match, the server broadcasts a "Misfire" message. The client catches this and draws an "R.I.P." tombstone graphic over their card.
+4. **Flashy Game Over Screen**: The client now catches the "FINAL BOUNTIES" broadcast, calculates the overall winner, and renders a giant pulsating golden aura with "WINNER" text dynamically overlaid on the table.
+
+```python
 import socket
 import threading
 import json
@@ -902,3 +921,7 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
+
+Would you like to continue and start implementing actual image assets (like PNG cards and pre-rendered bullet holes) instead of relying entirely on Pygame's built-in drawing shapes?
