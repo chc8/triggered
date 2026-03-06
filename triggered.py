@@ -370,6 +370,17 @@ class AnimatedCard:
 class TriggeredGameApp:
     def __init__(self):
         pygame.init()
+        pygame.mixer.init()
+        
+        # Load western background music
+        try:
+            pygame.mixer.music.load('western_theme.mp3')
+            pygame.mixer.music.set_volume(0.3)
+            pygame.mixer.music.play(-1) # Play indefinitely
+        except Exception:
+            print("Notice: 'western_theme.mp3' not found in root folder. Playing without background music.")
+            pass
+            
         self.res = (1280, 720)
         self.screen = pygame.display.set_mode(self.res)
         pygame.display.set_caption("TRIGGERED - High Res Edition")
@@ -695,10 +706,10 @@ class TriggeredGameApp:
             # Label
             lbl_color = SVGA['BLACK'] if self.setup_sequence.index(self.setup_step) >= idx else (150, 150, 150)
             lbl_surf = self.ledger_font.render(label, True, lbl_color)
-            self.screen.blit(lbl_surf, (fx + 50, y_pos))
+            self.screen.blit(lbl_surf, (fx + 30, y_pos)) # Adjusted padding to give label room
             
             # Value Box
-            box_x = fx + 300
+            box_x = fx + 340 # Moved further right
             box_w = 230
             
             if self.setup_step == step_id:
@@ -818,10 +829,17 @@ class TriggeredGameApp:
         if has_tombstone:
             tx = x + width // 2
             ty = y + height // 2 + 10
+            
+            # Draw silent fills so there is no internal outline overlapping
             pygame.draw.rect(self.screen, (100, 100, 100), (tx - 30, ty - 10, 60, 50))
             pygame.draw.circle(self.screen, (100, 100, 100), (tx, ty - 10), 30)
-            pygame.draw.rect(self.screen, (50, 50, 50), (tx - 30, ty - 10, 60, 50), 2)
-            pygame.draw.circle(self.screen, (50, 50, 50), (tx, ty - 10), 30, 2)
+            
+            # Trace only the extreme outer border
+            pygame.draw.line(self.screen, (50, 50, 50), (tx - 30, ty - 10), (tx - 30, ty + 38), 2) # Left wall
+            pygame.draw.line(self.screen, (50, 50, 50), (tx + 30, ty - 10), (tx + 30, ty + 38), 2) # Right wall
+            pygame.draw.line(self.screen, (50, 50, 50), (tx - 31, ty + 39), (tx + 31, ty + 39), 2) # Floor line
+            pygame.draw.arc(self.screen, (50, 50, 50), (tx - 30, ty - 40, 60, 60), 0, math.pi, 2)  # Top dome curve
+            
             rip_surf = self.small_font.render("R.I.P.", True, SVGA['BLACK'])
             self.screen.blit(rip_surf, (tx - rip_surf.get_width()//2, ty - 5))
 
@@ -854,8 +872,13 @@ class TriggeredGameApp:
             self.draw_card(c.draw_x, c.draw_y, 100, 140, c.value, c.suit, label, c.revealed, c.is_winner, c.has_bullet_hole, c.bullet_hole_pos, c.has_tombstone, c.flash_alpha)
 
         if self.game_over and self.overall_winner:
-            # Setup Old Wooden Board variables
-            board_w, board_h = 500, 180
+            font_big = pygame.font.SysFont('impact', 64)
+            win_text_str = f"WINNER: {self.overall_winner}"
+            win_text_w = font_big.size(win_text_str)[0]
+            
+            # Setup Old Wooden Board variables to stretch dynamically with the text length
+            board_w = max(500, win_text_w + 80)
+            board_h = 180
             cx = self.left_panel_w + (self.res[0] - self.left_panel_w)//2
             cy = self.res[1]//2
             bx, by = cx - board_w//2, cy - board_h//2
@@ -875,15 +898,14 @@ class TriggeredGameApp:
             # Heavy Border
             pygame.draw.rect(self.screen, SVGA['WOOD_DARK'], (bx, by, board_w, board_h), 6, border_radius=10)
             
-            # Iron Nails
+            # Iron Nails in Corners
             for nx, ny in [(bx+20, by+20), (bx+board_w-20, by+20), (bx+20, by+board_h-20), (bx+board_w-20, by+board_h-20)]:
                 pygame.draw.circle(self.screen, (50, 50, 50), (nx, ny), 8)
                 pygame.draw.circle(self.screen, (100, 100, 100), (nx-2, ny-2), 3) # Highlight
             
             # Text Generation
-            font_big = pygame.font.SysFont('impact', 64)
-            win_text = font_big.render(f"WINNER: {self.overall_winner}", True, SVGA['GOLD'])
-            shadow = font_big.render(f"WINNER: {self.overall_winner}", True, SVGA['BLACK'])
+            win_text = font_big.render(win_text_str, True, SVGA['GOLD'])
+            shadow = font_big.render(win_text_str, True, SVGA['BLACK'])
             sub_text = self.card_font.render("THE FASTEST GUN IN THE WEST", True, SVGA['WHITE'])
             
             self.screen.blit(shadow, (cx - shadow.get_width()//2 + 4, cy - shadow.get_height()//2 - 20 + 4))
