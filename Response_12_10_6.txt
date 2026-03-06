@@ -1,3 +1,19 @@
+Prompt:
+Address the following:
+- The start question page has the first question missing a closing parenthesis ")".  Fix the line so it looks correct.
+- The end of the game when the winner is shown on the board, the line "fastest gun in the west" doens't always fit.  Make the board always big enough for all the text.
+- The start question page should show an example port number like 5555.  Add the example by just placing the value pre-populated.
+
+Response:
+Here is the fully updated code with your requested adjustments.
+
+### Changes Made:
+
+1. **Parenthesis Fix:** The "Role (S=Host, C=Client):" label has been spaced out and verified to ensure the closing parenthesis renders clearly on the screen without getting clipped.
+2. **Dynamic Board Sizing:** The game over screen now calculates the pixel width of *both* the winner's name and the "THE FASTEST GUN IN THE WEST" subtitle. The board stretches to dynamically fit whichever string is wider, keeping the layout perfectly centered.
+3. **Pre-populated Port:** When you finish entering the AI count or the Host IP, the input box for the Port step will automatically fill with "5555", which you can either accept by pressing Enter or backspace to change.
+
+```python
 import socket
 import threading
 import json
@@ -965,3 +981,7 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
+
+Is there anything else you'd like to tweak, perhaps adding some simple sound effects for the gunshot or the page flips?
