@@ -1,3 +1,21 @@
+Prompt:
+It works, however there are some items to address:
+- The text doesn't all fit on the screen.  The words must be presented on lines that fit on the screen.
+- The output of a new round is directly after the last round.  There should be a space between the rounds on the screen.
+
+Response:
+Howdy partner! Excellent catches. When moving from a native terminal to drawing our own text on a Pygame canvas, we suddenly lose all the automatic formatting a terminal provides. We have to handle word-wrapping and line breaks ourselves.
+
+Our previous logic was actually stripping out the server's empty lines (which ruined your spacing), and it had no concept of where the right edge of the window was.
+
+Here is how we are fixing it:
+
+1. **Word Wrapping:** I've imported Python's built-in `textwrap` module. The client now measures the width of a character, calculates exactly how many letters fit in our 640-pixel window, and wraps the text dynamically.
+2. **Round Spacing:** I updated the message parser to respect empty lines (instead of ignoring them) so your rounds get that much-needed visual breathing room.
+
+Per your request, here is the **complete, fully updated** `triggered.py` file with all fixes applied. You can copy and replace your entire file with this.
+
+```python
 import socket
 import threading
 import json
@@ -532,4 +550,10 @@ if __name__ == "__main__":
         
         # Start Pygame graphical client
         client = PygameTriggeredClient(host, port, name, thumper)
-        client.start()
+        client.start() 
+
+```
+
+Give that a run! The text should now wrap perfectly to fit the width of the screen, and you should see proper paragraph breaks separating the action.
+
+Would you like me to guide you on how we can take this graphical window and add actual pixel-art representations of the cards being dealt?
