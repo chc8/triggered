@@ -1,2 +1,2 @@
-- todo: When the game ends, only the server should choose to exit or restart.  The client should just be informed of what happens next.
+
  
