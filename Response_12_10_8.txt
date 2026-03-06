@@ -1,3 +1,23 @@
+Prompt:
+Address the following:
+- On the first page of questions the firs line needs a little more space before the text input field.  Make room on the first line so the question has space before the input field so it looks nice.
+- If a player triggers at any time, the gunshot sound should play.  This includes a misfire and or any other time while the game is in play.
+- If a player triggers when the player cards are showing they should be able to shoot their own card multiple times and have multiple gunshot sounds and gunshot holes show up at random spots on their card.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Setup Spacing:** The input fields on the "Saloon Ledger" have been shifted to the right (`fx + 440`) and scaled slightly so the long question (`Role (S = Host, C = Client):`) has plenty of breathing room.
+2. **Universal Gunshot Audio & Multiple Bullet Holes:** * The `AnimatedCard` now uses a list to track an infinite number of bullet holes.
+* When you press `t`, it *instantly* plays the gunshot sound locally, flashes your card, and maps a brand new random `(x, y)` bullet hole to your card (if the cards have been dealt).
+* You can spam `t` as fast as you want to fill your card with bullet holes and rapid-fire audio.
+* The message parser intercepts server broadcasts for other players (like AI or network clients) and will appropriately play the audio and draw bullet holes on *their* cards when they fire or misfire, without doubling up your own local sounds.
+
+
+
+```python
 import socket
 import threading
 import json
@@ -996,3 +1016,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
