@@ -1,3 +1,16 @@
+Prompt:
+Yes I would like a real game loop structure with a title screen.
+
+Response:
+Howdy partner! Adding a state machine to handle different game screens (like a Title Screen, Lobby, and Playing state) is exactly how the pros build game loops.
+
+By adding a simple `self.state` variable, we can tell the Pygame window whether it should be drawing the Title Screen or the Game Screen, and which keyboard inputs it should be listening for.
+
+I have removed the ASCII rules from the terminal output and built a proper, retro EGA Title Screen right into the Pygame client. The network connects in the background, reading all the saloon chatter while you read the rules, and a blinking prompt tells you when to kick the doors open.
+
+Here is the **complete, fully updated** code with the new game loop structure:
+
+```python
 import socket
 import threading
 import json
@@ -689,4 +702,8 @@ if __name__ == "__main__":
         port = int(input("Enter host port: "))
         
         client = PygameTriggeredClient(host, port, name, thumper, is_host)
-        client.start()
+        client.start() 
+
+```
+
+Would you like me to guide you on how we can implement a real Pygame text-input system so we can ditch the terminal setup entirely and do everything inside the graphical window?
