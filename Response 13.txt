@@ -1,3 +1,22 @@
+Prompt:
+One change to make:
+- When the game ends and the player is asked to restart or exit the game allows any player to enter a response.  Make it so only the player who started the server can make that choice, and the client players just wait to see what is selected.
+
+Response:
+That is a very smart change. We definitely don't want a random player deciding to shut down the whole saloon for everyone else!
+
+I have added an `is_host` permission flag. Now:
+
+1. When players connect, the Host is told they are in charge, while clients are told to sit tight and wait for the Host to start.
+2. At the end of the game, the message tells everyone they are waiting on the Host's decision.
+3. If a regular player tries to type `start` or `restart`, their client will kindly tell them "Only the Host can do that, partner."
+4. If a regular player types `exit`, they will safely leave the server on their own without ruining the game for the remaining players. Only the Host typing `exit` will pack up the server and shut it down for everyone.
+
+Here is the fully updated code:
+
+### Complete `triggered.py` Code
+
+```python
 import socket
 import threading
 import json
@@ -460,3 +479,5 @@ if __name__ == "__main__":
         # Pass is_host=False to regular clients
         client = TriggeredClient(host, port, name, thumper, is_host=False)
         client.start()
+
+```
