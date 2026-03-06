@@ -32,7 +32,10 @@ def create_deck():
 def calculate_thumper(age, height, weight):
     return round(age + height + weight, 1)
 
-# --- Network Server ---
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+# --- Network Server (Logic Preserved) ---
 class TriggeredServer:
     def __init__(self, port, ai_count):
         self.port = port
@@ -294,49 +297,80 @@ class TriggeredServer:
         self.broadcast({'msg': "\nHost can press 'R' to play a new game, or close the window to exit."})
 
 
-# --- EGA Palette (16 Colors) ---
-EGA = {
-    'BLACK': (0, 0, 0),
-    'BLUE': (0, 0, 170),
-    'GREEN': (0, 170, 0),
-    'CYAN': (0, 170, 170),
-    'RED': (170, 0, 0),
-    'MAGENTA': (170, 0, 170),
-    'BROWN': (170, 85, 0),
-    'LIGHT_GRAY': (170, 170, 170),
-    'DARK_GRAY': (85, 85, 85),
-    'LIGHT_BLUE': (85, 85, 255),
-    'LIGHT_GREEN': (85, 255, 85),
-    'LIGHT_CYAN': (85, 255, 255),
-    'LIGHT_RED': (255, 85, 85),
-    'LIGHT_MAGENTA': (255, 85, 255),
-    'YELLOW': (255, 255, 85),
-    'WHITE': (255, 255, 255)
+# --- SVGA+ Palette (Modern, Rich Colors) ---
+SVGA = {
+    'BG_GREEN': (24, 66, 38),      # Casino felt green
+    'BLACK': (20, 20, 20),
+    'WHITE': (245, 245, 245),
+    'CARD_SHADOW': (0, 0, 0, 100), # Alpha shadow
+    'GOLD': (255, 215, 0),
+    'TEXT_LIGHT': (220, 220, 220),
+    'TEXT_BLUE': (100, 200, 255),
+    'TEXT_RED': (255, 100, 100),
+    'TEXT_GREEN': (100, 255, 100),
+    'SUIT_RED': (220, 40, 40),
+    'SUIT_BLACK': (30, 30, 30),
+    'UI_PANEL': (40, 40, 40, 200)
 }
 
-# --- Main Application (Handles Setup & Network) ---
+# --- Visual Objects for Smooth Rendering ---
+class FloatingMessage:
+    def __init__(self, text, color, start_y):
+        self.text = text
+        self.color = color
+        self.y = start_y
+        self.target_y = start_y
+
+    def update(self):
+        self.y = lerp(self.y, self.target_y, 0.15)
+
+class AnimatedCard:
+    def __init__(self, start_x, start_y, value=None, suit=None, label=""):
+        self.x = start_x
+        self.y = start_y
+        self.target_x = start_x
+        self.target_y = start_y
+        self.value = value
+        self.suit = suit
+        self.label = label
+        self.revealed = False
+
+    def update(self):
+        self.x = lerp(self.x, self.target_x, 0.1)
+        self.y = lerp(self.y, self.target_y, 0.1)
+
+# --- Main Application ---
 class TriggeredGameApp:
     def __init__(self):
         pygame.init()
-        self.scale = 2
-        self.res = (320 * self.scale, 200 * self.scale)
+        # Modern 720p Resolution
+        self.res = (1280, 720)
         self.screen = pygame.display.set_mode(self.res)
-        pygame.display.set_caption("TRIGGERED - EGA Edition")
+        pygame.display.set_caption("TRIGGERED - High Res Edition")
         
-        self.font = pygame.font.SysFont('courier', 12 * self.scale, bold=True)
-        self.small_font = pygame.font.SysFont('courier', 8 * self.scale, bold=True)
-        self.title_font = pygame.font.SysFont('courier', 32 * self.scale, bold=True)
+        # Anti-aliased TrueType Fonts
+        try:
+            self.font = pygame.font.SysFont('trebuchetms', 20, bold=True)
+            self.small_font = pygame.font.SysFont('trebuchetms', 16, bold=True)
+            self.title_font = pygame.font.SysFont('impact', 72)
+            self.card_font = pygame.font.SysFont('arial', 36, bold=True)
+        except:
+            self.font = pygame.font.Font(None, 24)
+            self.small_font = pygame.font.Font(None, 20)
+            self.title_font = pygame.font.Font(None, 72)
+            self.card_font = pygame.font.Font(None, 40)
         
-        # Calculate exactly how many chars fit into 390 pixels (so they never overlap cards)
+        # UI Scaling metrics
+        self.left_panel_w = 600
         char_width = self.font.size("A")[0]
-        self.max_chars = 390 // char_width 
+        self.max_chars = (self.left_panel_w - 40) // char_width 
         
         self.running = True
         self.state = 'SETUP'
         self.blink_timer = 0
         
         # Setup Variables
-        self.setup_step = 'MODE' # MODE -> NAME -> AGE -> HEIGHT -> WEIGHT -> AI/PORT/IP
+        self.setup_step = 'MODE'
         self.input_text = ""
         self.setup_error = ""
         
@@ -355,12 +389,12 @@ class TriggeredGameApp:
         self.server = None
         self.client_socket = None
         self.msg_queue = queue.Queue()
-        self.log = []
         
-        # Game Visual State
-        self.bullseye_card = None
-        self.player_names = []
-        self.revealed_cards = {}
+        # Visual State
+        self.log_messages = []
+        self.scroll_offset = 0
+        self.bullseye_anim_card = None
+        self.player_cards = {}
         self.cards_dealt = False
 
     def handle_setup_input(self, event):
@@ -429,12 +463,12 @@ class TriggeredGameApp:
                 self.setup_error = ""
 
     def finalize_setup(self):
-        pygame.display.set_caption("TRIGGERED - EGA Edition" + (" [HOST]" if self.is_host else ""))
+        pygame.display.set_caption("TRIGGERED - High Res Edition" + (" [HOST]" if self.is_host else ""))
         
         if self.is_host:
             self.server = TriggeredServer(self.port, self.ai_count)
             self.server.start()
-            time.sleep(0.5) # Let server bind
+            time.sleep(0.5)
             self.host_ip = '127.0.0.1'
             
         self.connect_to_server()
@@ -448,19 +482,30 @@ class TriggeredGameApp:
             
             self.state = 'TITLE'
             
-            # Populate initial log
-            self.log = [("Welcome to the Saloon!", EGA['LIGHT_GRAY'])]
+            self.add_log_message("Welcome to the Saloon!", SVGA['TEXT_LIGHT'])
             if self.is_host:
-                self.log.append((f"Server IP: {get_local_ip()} | Port: {self.port}", EGA['LIGHT_CYAN']))
-                self.log.append(("You are the Host. Press 'S' to Start.", EGA['YELLOW']))
+                self.add_log_message(f"Server IP: {get_local_ip()} | Port: {self.port}", SVGA['TEXT_BLUE'])
+                self.add_log_message("You are the Host. Press 'S' to Start.", SVGA['GOLD'])
             else:
-                self.log.append(("Waiting for the Host to start...", EGA['LIGHT_GRAY']))
-            self.log.append(("Press 'T' to pull the TRIGGER!", EGA['LIGHT_GRAY']))
+                self.add_log_message("Waiting for the Host to start...", SVGA['TEXT_LIGHT'])
+            self.add_log_message("Press 'T' to pull the TRIGGER!", SVGA['TEXT_LIGHT'])
             
             threading.Thread(target=self.receive_messages, daemon=True).start()
         except ConnectionRefusedError:
             self.setup_step = 'PORT'
             self.setup_error = "Connection Failed. Check IP/Port and try again."
+
+    def add_log_message(self, text, color):
+        spacing = 28
+        for msg in self.log_messages:
+            msg.target_y -= spacing
+        
+        new_msg = FloatingMessage(text, color, self.res[1])
+        new_msg.target_y = self.res[1] - 50 
+        self.log_messages.append(new_msg)
+        
+        if len(self.log_messages) > 30:
+            self.log_messages.pop(0)
 
     def receive_messages(self):
         buffer = ""
@@ -480,59 +525,84 @@ class TriggeredGameApp:
                         if 'msg' in msg:
                             raw_msg = msg['msg']
                             
+                            # Parse state for visuals
                             if "--- THUMPER POWERS ---" in raw_msg:
-                                self.player_names = []
+                                self.player_cards.clear()
+                                idx = 0
                                 for m_line in raw_msg.split('\n'):
                                     if ':' in m_line and not '---' in m_line and not 'THUMPER' in m_line:
                                         p_name = m_line.split(':')[0].strip()
-                                        if p_name: self.player_names.append(p_name)
+                                        if p_name:
+                                            # Spawn cards off-screen
+                                            self.player_cards[p_name] = AnimatedCard(self.res[0] + 200, self.res[1] + 200, label=p_name)
+                                            idx += 1
+                                            
                             elif "is shufflin'" in raw_msg:
-                                self.bullseye_card = None
-                                self.revealed_cards.clear()
+                                self.bullseye_anim_card = None
+                                for p_name, card in self.player_cards.items():
+                                    card.revealed = False
+                                    card.x = self.res[0] + 100 # Reset positions off-screen
                                 self.cards_dealt = False
+                                
                             elif "Cards dealt face down" in raw_msg:
                                 self.cards_dealt = True
-                                self.revealed_cards.clear()
+                                # Calculate target positions
+                                count = len(self.player_cards)
+                                start_x = self.left_panel_w + 50
+                                for i, (p_name, card) in enumerate(self.player_cards.items()):
+                                    col = i % 4
+                                    row = i // 4
+                                    card.target_x = start_x + (col * 140)
+                                    card.target_y = 350 + (row * 180)
+                                    
                             elif ">>>" in raw_msg and "of" in raw_msg:
                                 parts = raw_msg.replace(">>>", "").replace("<<<", "").strip().split(" of ")
                                 if len(parts) == 2:
-                                    self.bullseye_card = (parts[0].strip(), parts[1].strip())
+                                    self.bullseye_anim_card = AnimatedCard(self.res[0]//2, -200, parts[0].strip(), parts[1].strip(), "BULLSEYE")
+                                    self.bullseye_anim_card.target_x = self.left_panel_w + (self.res[0] - self.left_panel_w)//2 - 75
+                                    self.bullseye_anim_card.target_y = 100
+                                    self.bullseye_anim_card.revealed = True
+                                    
                             elif "Cards revealed on the table:" in raw_msg:
                                 for m_line in raw_msg.split('\n'):
                                     if m_line.strip().startswith('- '):
                                         try:
                                             p_name_part, card_part = m_line.strip()[2:].split(': ')
                                             val, suit = card_part.split(' of ')
-                                            self.revealed_cards[p_name_part.strip()] = (val.strip(), suit.strip())
+                                            if p_name_part.strip() in self.player_cards:
+                                                pc = self.player_cards[p_name_part.strip()]
+                                                pc.value = val.strip()
+                                                pc.suit = suit.strip()
+                                                pc.revealed = True
                                         except ValueError:
                                             pass
                             
                             for m_line in raw_msg.split('\n'):
                                 if m_line.strip() == "":
-                                    self.msg_queue.put(("", EGA['LIGHT_GRAY'])) 
+                                    self.msg_queue.put(("", SVGA['TEXT_LIGHT'])) 
                                 else:
-                                    color = EGA['LIGHT_GRAY']
-                                    if '>>>' in m_line: color = EGA['LIGHT_CYAN']
-                                    elif 'BANG' in m_line or 'Misfire' in m_line: color = EGA['LIGHT_RED']
-                                    elif 'wins' in m_line.lower(): color = EGA['LIGHT_GREEN']
+                                    color = SVGA['TEXT_LIGHT']
+                                    if '>>>' in m_line: color = SVGA['TEXT_BLUE']
+                                    elif 'BANG' in m_line or 'Misfire' in m_line: color = SVGA['TEXT_RED']
+                                    elif 'wins' in m_line.lower(): color = SVGA['TEXT_GREEN']
                                     
                                     wrapped = textwrap.wrap(m_line, self.max_chars)
                                     for w_line in wrapped:
                                         self.msg_queue.put((w_line, color))
                                         
                         if msg.get('action') == 'quit':
-                            self.msg_queue.put(("Server closed. You can close this window.", EGA['LIGHT_RED']))
+                            self.msg_queue.put(("Server closed. You can close this window.", SVGA['TEXT_RED']))
                     except Exception:
                         pass
             except:
-                self.msg_queue.put(("Disconnected from the server.", EGA['LIGHT_GRAY']))
+                self.msg_queue.put(("Disconnected from the server.", SVGA['TEXT_LIGHT']))
                 break
 
     def draw_setup_screen(self):
-        self.screen.fill(EGA['BLACK'])
+        self.screen.fill(SVGA['BLACK'])
         
-        title_surf = self.title_font.render("TRIGGERED SETUP", True, EGA['LIGHT_RED'])
-        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, 40))
+        title_surf = self.title_font.render("TRIGGERED", True, SVGA['TEXT_RED'])
+        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, 100))
         
         prompts = {
             'MODE': "Start as (S)erver/Host or (C)lient?",
@@ -546,188 +616,144 @@ class TriggeredGameApp:
         }
         
         prompt_text = prompts.get(self.setup_step, "")
-        p_surf = self.font.render(prompt_text, True, EGA['YELLOW'])
-        self.screen.blit(p_surf, (self.res[0]//2 - p_surf.get_width()//2, 140))
+        p_surf = self.font.render(prompt_text, True, SVGA['GOLD'])
+        self.screen.blit(p_surf, (self.res[0]//2 - p_surf.get_width()//2, 300))
         
-        # Blinking cursor
         self.blink_timer += 1
-        display_input = self.input_text + ("_" if self.blink_timer % 30 < 15 else " ")
-        i_surf = self.font.render(display_input, True, EGA['WHITE'])
-        self.screen.blit(i_surf, (self.res[0]//2 - i_surf.get_width()//2, 180))
+        display_input = self.input_text + ("|" if self.blink_timer % 30 < 15 else "")
+        i_surf = self.font.render(display_input, True, SVGA['WHITE'])
+        self.screen.blit(i_surf, (self.res[0]//2 - i_surf.get_width()//2, 350))
         
         if self.setup_error:
-            e_surf = self.font.render(self.setup_error, True, EGA['LIGHT_RED'])
-            self.screen.blit(e_surf, (self.res[0]//2 - e_surf.get_width()//2, 220))
+            e_surf = self.font.render(self.setup_error, True, SVGA['TEXT_RED'])
+            self.screen.blit(e_surf, (self.res[0]//2 - e_surf.get_width()//2, 400))
 
         pygame.display.flip()
 
     def draw_title_screen(self):
-        self.screen.fill(EGA['BLACK'])
+        self.screen.fill(SVGA['BLACK'])
         
-        title_surf = self.title_font.render("TRIGGERED", True, EGA['LIGHT_RED'])
-        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, 20))
+        title_surf = self.title_font.render("TRIGGERED", True, SVGA['TEXT_RED'])
+        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, 80))
         
-        subtitle = self.font.render("HOW TO SURVIVE THE STANDOFF", True, EGA['YELLOW'])
-        self.screen.blit(subtitle, (self.res[0]//2 - subtitle.get_width()//2, 80))
+        subtitle = self.font.render("HOW TO SURVIVE THE STANDOFF", True, SVGA['GOLD'])
+        self.screen.blit(subtitle, (self.res[0]//2 - subtitle.get_width()//2, 180))
         
-        pygame.draw.line(self.screen, EGA['BROWN'], (50, 105), (self.res[0]-50, 105), 2)
+        pygame.draw.line(self.screen, SVGA['GOLD'], (self.res[0]//2 - 200, 210), (self.res[0]//2 + 200, 210), 2)
         
         rules = [
             "1. Goal: Collect the most cards, partner.",
             "2. A 'Bullseye' card is dealt face-up.",
             "3. When dealer yells 'CLICK CLICK', cards flip.",
-            "4. QUICK DRAW: If ANY match to Bullseye,",
-            "   press the 'T' key immediately!",
+            "4. QUICK DRAW: If ANY match to Bullseye, press the 'T' key immediately!",
             "5. No match? Highest card takes the pot.",
-            "6. MISFIRE: Press 'T' with no match?",
-            "   You lose the round!",
+            "6. MISFIRE: Press 'T' with no match? You lose the round!",
             "7. Dealer wins ties. House rules."
         ]
         
-        y = 120
+        y = 250
         for r in rules:
-            r_surf = self.font.render(r, True, EGA['LIGHT_GRAY'])
-            self.screen.blit(r_surf, (60, y))
-            y += 20 * (self.scale // 2)
+            r_surf = self.font.render(r, True, SVGA['TEXT_LIGHT'])
+            self.screen.blit(r_surf, (self.res[0]//2 - 300, y))
+            y += 35
             
         self.blink_timer += 1
         if self.blink_timer % 30 < 15:
-            prompt = self.font.render("PRESS SPACE TO KICK OPEN THE DOORS", True, EGA['LIGHT_CYAN'])
-            self.screen.blit(prompt, (self.res[0]//2 - prompt.get_width()//2, self.res[1] - 40))
+            prompt = self.font.render("PRESS SPACE TO KICK OPEN THE DOORS", True, SVGA['TEXT_BLUE'])
+            self.screen.blit(prompt, (self.res[0]//2 - prompt.get_width()//2, self.res[1] - 100))
 
         pygame.display.flip()
 
-    def draw_card(self, x, y, value, suit, label):
-        lbl_surf = self.font.render(label, True, EGA['YELLOW'])
-        self.screen.blit(lbl_surf, (x, y - 25))
+    def draw_card(self, x, y, width, height, value, suit, label, revealed):
+        # Draw Label
+        lbl_surf = self.small_font.render(label, True, SVGA['GOLD'])
+        self.screen.blit(lbl_surf, (x + width//2 - lbl_surf.get_width()//2, y - 25))
         
-        w, h = 100, 140
-        pygame.draw.rect(self.screen, EGA['WHITE'], (x, y, w, h))
-        pygame.draw.rect(self.screen, EGA['LIGHT_GRAY'], (x, y, w, h), 4) 
+        # Draw Shadow
+        shadow_rect = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_rect, SVGA['CARD_SHADOW'], shadow_rect.get_rect(), border_radius=8)
+        self.screen.blit(shadow_rect, (x + 5, y + 5))
         
-        color = EGA['LIGHT_RED'] if suit in ['Hearts', 'Diamonds'] else EGA['BLACK']
+        if not revealed:
+            pygame.draw.rect(self.screen, (20, 50, 100), (x, y, width, height), border_radius=8)
+            pygame.draw.rect(self.screen, SVGA['WHITE'], (x, y, width, height), 2, border_radius=8)
+            # Simple pattern for back
+            for i in range(10, width, 15):
+                pygame.draw.line(self.screen, (30, 80, 150), (x+i, y), (x+i, y+height), 2)
+            return
+
+        # Draw Face
+        pygame.draw.rect(self.screen, SVGA['WHITE'], (x, y, width, height), border_radius=8)
+        pygame.draw.rect(self.screen, (200, 200, 200), (x, y, width, height), 2, border_radius=8) 
         
-        val_surf = self.font.render(value, True, color)
+        color = SVGA['SUIT_RED'] if suit in ['Hearts', 'Diamonds'] else SVGA['SUIT_BLACK']
+        
+        # Top-left Value
+        val_surf = self.card_font.render(value, True, color)
         self.screen.blit(val_surf, (x + 10, y + 10))
         
-        cx, cy = x + w // 2, y + h // 2
+        # Center Suit Shape
+        cx, cy = x + width // 2, y + height // 2 + 10
+        size = 20 if width > 100 else 12
+        
         if suit == 'Diamonds':
-            pygame.draw.polygon(self.screen, color, [(cx, cy-20), (cx+20, cy), (cx, cy+20), (cx-20, cy)])
+            pygame.draw.polygon(self.screen, color, [(cx, cy-size), (cx+size*0.8, cy), (cx, cy+size), (cx-size*0.8, cy)])
         elif suit == 'Hearts':
-            pygame.draw.circle(self.screen, color, (cx-10, cy-10), 12)
-            pygame.draw.circle(self.screen, color, (cx+10, cy-10), 12)
-            pygame.draw.polygon(self.screen, color, [(cx-20, cy-5), (cx+20, cy-5), (cx, cy+20)])
+            pygame.draw.circle(self.screen, color, (cx-size//2, cy-size//2), size//2 + 2)
+            pygame.draw.circle(self.screen, color, (cx+size//2, cy-size//2), size//2 + 2)
+            pygame.draw.polygon(self.screen, color, [(cx-size, cy-size//3), (cx+size, cy-size//3), (cx, cy+size)])
         elif suit == 'Spades':
-            pygame.draw.circle(self.screen, color, (cx-10, cy+5), 12)
-            pygame.draw.circle(self.screen, color, (cx+10, cy+5), 12)
-            pygame.draw.polygon(self.screen, color, [(cx-20, cy+5), (cx+20, cy+5), (cx, cy-20)])
-            pygame.draw.rect(self.screen, color, (cx-4, cy+5, 8, 20))
+            pygame.draw.circle(self.screen, color, (cx-size//2, cy+size//3), size//2 + 2)
+            pygame.draw.circle(self.screen, color, (cx+size//2, cy+size//3), size//2 + 2)
+            pygame.draw.polygon(self.screen, color, [(cx-size, cy+size//3), (cx+size, cy+size//3), (cx, cy-size)])
+            pygame.draw.rect(self.screen, color, (cx-size//4, cy+size//3, size//2, size))
         elif suit == 'Clubs':
-            pygame.draw.circle(self.screen, color, (cx, cy-15), 12)
-            pygame.draw.circle(self.screen, color, (cx-12, cy+5), 12)
-            pygame.draw.circle(self.screen, color, (cx+12, cy+5), 12)
-            pygame.draw.rect(self.screen, color, (cx-4, cy+5, 8, 20))
-
-    def draw_wrapped_name(self, card_x, card_y, label, card_w):
-        char_w = self.small_font.size("A")[0]
-        max_chars = max(5, card_w // char_w + 1) 
-        
-        wrapped = textwrap.wrap(label, max_chars)
-        line_h = self.small_font.get_height() - 4
-        total_h = len(wrapped) * line_h
-        
-        start_y = card_y - total_h - 2
-        
-        for i, line in enumerate(wrapped):
-            lbl_surf = self.small_font.render(line, True, EGA['YELLOW'])
-            cx = card_x + (card_w // 2) - (lbl_surf.get_width() // 2)
-            self.screen.blit(lbl_surf, (cx, start_y + i * line_h))
-
-    def draw_micro_card_back(self, x, y, label):
-        self.draw_wrapped_name(x, y, label, 45)
-        
-        w, h = 45, 65
-        pygame.draw.rect(self.screen, EGA['BLUE'], (x, y, w, h))
-        pygame.draw.rect(self.screen, EGA['WHITE'], (x, y, w, h), 2)
-        
-        for i in range(5, w, 10):
-            pygame.draw.line(self.screen, EGA['CYAN'], (x+i, y), (x+i, y+h), 1)
-        for i in range(5, h, 10):
-            pygame.draw.line(self.screen, EGA['CYAN'], (x, y+i), (x+w, y+i), 1)
-
-    def draw_micro_card(self, x, y, value, suit, label):
-        self.draw_wrapped_name(x, y, label, 45)
-        
-        w, h = 45, 65
-        pygame.draw.rect(self.screen, EGA['WHITE'], (x, y, w, h))
-        pygame.draw.rect(self.screen, EGA['LIGHT_GRAY'], (x, y, w, h), 2)
-        color = EGA['LIGHT_RED'] if suit in ['Hearts', 'Diamonds'] else EGA['BLACK']
-        
-        val_surf = self.small_font.render(value, True, color)
-        self.screen.blit(val_surf, (x + 3, y + 3))
-        
-        cx, cy = x + w//2, y + h//2 + 8
-        if suit == 'Diamonds':
-            pygame.draw.polygon(self.screen, color, [(cx, cy-8), (cx+8, cy), (cx, cy+8), (cx-8, cy)])
-        elif suit == 'Hearts':
-            pygame.draw.circle(self.screen, color, (cx-4, cy-4), 4)
-            pygame.draw.circle(self.screen, color, (cx+4, cy-4), 4)
-            pygame.draw.polygon(self.screen, color, [(cx-8, cy-2), (cx+8, cy-2), (cx, cy+8)])
-        elif suit == 'Spades':
-            pygame.draw.circle(self.screen, color, (cx-4, cy+2), 4)
-            pygame.draw.circle(self.screen, color, (cx+4, cy+2), 4)
-            pygame.draw.polygon(self.screen, color, [(cx-8, cy+2), (cx+8, cy+2), (cx, cy-8)])
-            pygame.draw.rect(self.screen, color, (cx-1, cy+2, 2, 6))
-        elif suit == 'Clubs':
-            pygame.draw.circle(self.screen, color, (cx, cy-6), 4)
-            pygame.draw.circle(self.screen, color, (cx-5, cy+2), 4)
-            pygame.draw.circle(self.screen, color, (cx+5, cy+2), 4)
-            pygame.draw.rect(self.screen, color, (cx-1, cy+2, 2, 6))
+            pygame.draw.circle(self.screen, color, (cx, cy-size//1.5), size//2 + 2)
+            pygame.draw.circle(self.screen, color, (cx-size//1.5, cy+size//3), size//2 + 2)
+            pygame.draw.circle(self.screen, color, (cx+size//1.5, cy+size//3), size//2 + 2)
+            pygame.draw.rect(self.screen, color, (cx-size//4, cy+size//3, size//2, size))
 
     def draw_game_screen(self):
-        self.screen.fill(EGA['BLACK'])
+        self.screen.fill(SVGA['BG_GREEN'])
         
-        banner = self.font.render(f"GUNSLINGER: {self.name} | THUMPER: {self.thumper}", True, EGA['YELLOW'])
-        self.screen.blit(banner, (10, 10))
-        pygame.draw.line(self.screen, EGA['BROWN'], (10, 35), (self.res[0]-10, 35), 2)
+        # Draw Log Panel (Left Side)
+        panel_rect = pygame.Surface((self.left_panel_w, self.res[1]), pygame.SRCALPHA)
+        pygame.draw.rect(panel_rect, SVGA['UI_PANEL'], panel_rect.get_rect())
+        self.screen.blit(panel_rect, (0, 0))
+        pygame.draw.line(self.screen, SVGA['GOLD'], (self.left_panel_w, 0), (self.left_panel_w, self.res[1]), 3)
         
-        # Draw game text log on the left
-        y = 50
-        for item in self.log:
-            line, color = item
-            if line == "": 
-                y += 20 * (self.scale // 2)
-                continue
-            text_surface = self.font.render(line, True, color)
-            self.screen.blit(text_surface, (10, y))
-            y += 20 * (self.scale // 2)
+        banner = self.font.render(f"GUNSLINGER: {self.name} | THUMPER: {self.thumper}", True, SVGA['GOLD'])
+        self.screen.blit(banner, (20, 20))
+        pygame.draw.line(self.screen, SVGA['TEXT_LIGHT'], (20, 50), (self.left_panel_w - 20, 50), 1)
+        
+        # Smooth Log Rendering
+        for msg in self.log_messages:
+            msg.update()
+            if msg.y > 60 and msg.y < self.res[1]: 
+                text_surface = self.font.render(msg.text, True, msg.color)
+                self.screen.blit(text_surface, (20, msg.y))
 
-        # Draw Cards on the right
-        if self.bullseye_card:
-            self.draw_card(470, 60, *self.bullseye_card, "BULLSEYE")
+        # Render Cards
+        if self.bullseye_anim_card:
+            c = self.bullseye_anim_card
+            c.update()
+            self.draw_card(c.x, c.y, 150, 210, c.value, c.suit, c.label, c.revealed)
             
-        if self.player_names and self.cards_dealt:
-            for i, p_name in enumerate(self.player_names):
-                col = i % 4
-                row = i // 4
-                x = 420 + col * 54 
-                y = 235 + row * 95 
-                
-                label = "YOU" if p_name == self.name else p_name
-                
-                if p_name in self.revealed_cards:
-                    val, suit = self.revealed_cards[p_name]
-                    self.draw_micro_card(x, y, val, suit, label)
-                else:
-                    self.draw_micro_card_back(x, y, label)
+        for p_name, c in self.player_cards.items():
+            c.update()
+            label = "YOU" if p_name == self.name else p_name
+            self.draw_card(c.x, c.y, 100, 140, c.value, c.suit, label, c.revealed)
 
         pygame.display.flip()
 
     def process_messages(self):
         while not self.msg_queue.empty():
-            self.log.append(self.msg_queue.get())
-            if len(self.log) > 15: 
-                self.log.pop(0)
+            text, color = self.msg_queue.get()
+            if text == "":
+                # Add an empty line space
+                self.add_log_message(" ", color)
+            else:
+                self.add_log_message(text, color)
 
     def run(self):
         clock = pygame.time.Clock()
@@ -754,7 +780,7 @@ class TriggeredGameApp:
                             
                     elif self.state == 'GAME':
                         if event.key == pygame.K_t: 
-                            self.msg_queue.put((">>> You reached for your iron! <<<", EGA['LIGHT_CYAN']))
+                            self.add_log_message(">>> You reached for your iron! <<<", SVGA['TEXT_BLUE'])
                             msg = json.dumps({'action': 'trigger'}) + "\n"
                             self.client_socket.sendall(msg.encode())
                         elif event.key == pygame.K_s: 
@@ -762,13 +788,13 @@ class TriggeredGameApp:
                                 msg = json.dumps({'action': 'start'}) + "\n"
                                 self.client_socket.sendall(msg.encode())
                             else:
-                                self.msg_queue.put(("Only the Host can start the game.", EGA['LIGHT_RED']))
+                                self.add_log_message("Only the Host can start the game.", SVGA['TEXT_RED'])
                         elif event.key == pygame.K_r: 
                             if self.is_host:
                                 msg = json.dumps({'action': 'restart'}) + "\n"
                                 self.client_socket.sendall(msg.encode())
                             else:
-                                self.msg_queue.put(("Only the Host can restart the game.", EGA['LIGHT_RED']))
+                                self.add_log_message("Only the Host can restart the game.", SVGA['TEXT_RED'])
 
             if self.state == 'SETUP':
                 self.draw_setup_screen()
@@ -777,12 +803,11 @@ class TriggeredGameApp:
             elif self.state == 'GAME':
                 self.draw_game_screen()
                 
-            clock.tick(30) 
+            clock.tick(60) # Increased to 60fps for smoother Lerp animations
             
         pygame.quit()
         os._exit(0)
 
-# --- Main Entry Point ---
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
