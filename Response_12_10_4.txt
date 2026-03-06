@@ -1,3 +1,17 @@
+Prompt:
+Address the following and provide the code in a single part:
+- At the end of the game when the winning player message is drawn on the screen, make it look like it is written on an old wooden board.  This way the text will be clearly seen.
+- At the start when the inital questions are asked, make it less like a console based game question.  
+
+Response:
+Here is the complete, integrated code.
+
+To address your requests:
+
+1. **The Setup Screen** has been completely overhauled. Instead of printing isolated console-like questions, it now renders a stylized "Saloon Ledger" (a graphical form). It displays all the fields at once, filling them in sequentially as you type, giving it a true graphical menu feel.
+2. **The End Game Screen** now draws a procedurally generated wooden board (complete with wood grain color, horizontal planks, a dark thick border, and iron nails in the corners) to mount the winning text on, ensuring it stands out cleanly from the cards underneath.
+
+```python
 import socket
 import threading
 import json
@@ -956,3 +970,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
