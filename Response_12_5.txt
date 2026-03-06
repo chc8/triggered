@@ -1,3 +1,15 @@
+Prompt:
+Only one item to address:
+- When the text wraps on the screen it doesn't retain it's original colour.  This doesn't look right, if the text wraps, the colour should match the first part of the text.
+
+Response:
+You are absolutely right, partner. That is a classic symptom of text-wrapping in game engines. When the line gets chopped into pieces, the second piece loses the context of the first, so it reverts back to the default gray color.
+
+To fix this, we need to change *when* the game figures out the color. Instead of checking for colors right before drawing, we'll analyze the message for keywords *before* we wrap it. Then, we assign that color to every wrapped chunk of that specific message.
+
+Here is the fully assembled, 100% complete `triggered.py` code with the color-wrapping fix applied. You can copy and replace your entire file with this one.
+
+```python
 import socket
 import threading
 import json
@@ -538,4 +550,10 @@ if __name__ == "__main__":
         
         # Start Pygame graphical client
         client = PygameTriggeredClient(host, port, name, thumper)
-        client.start()
+        client.start() 
+
+```
+
+Give that a shot! Those wrapped messages should hold onto their EGA colors across line breaks without a hitch.
+
+Would you like me to show you how we could draw some EGA pixel-art cards on the side of the screen as they're dealt?
