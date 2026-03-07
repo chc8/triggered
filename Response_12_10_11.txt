@@ -1,3 +1,21 @@
+Prompt:
+Address the following:
+- After pressing spacebar to kick open the saloon doors, there should be an animation of a saloon door opening.
+- Make the saloon ledger / wanted question page to ask for weight in pounds.  Pounds should be converted to kilograms to calculate Thumper Power.
+- Make the saloon ledger / wanted question page look like curled paper edges.
+- For all players that have zero cards in their collection (no points), they are put into a special bonus end game to take and split the points of the highst player.  The bonus end game is to have the highest points player (or players if tied) and all the zero point players see who can shoot jugs of moonshine the quickest.  If the any zero point players are faster than point players, then the zero point players take the points from the slower point holding player  and share the points with all the zero point players.
+
+Response:
+Here is the complete, updated game code incorporating all your new requests!
+
+### What's New:
+
+1. **Saloon Door Animation**: When you press `SPACE` on the title screen, wooden saloon doors will smoothly swing open to reveal the green felt table underneath.
+2. **Pounds to Kilograms**: The ledger now specifically asks for weight in pounds (lbs) and silently runs a math conversion to kilograms (`lbs * 0.453592`) in the background to calculate your Thumper power.
+3. **Curled Paper Ledger**: The Wanted Poster setup page now uses polygon math to render curled, folded "dog-eared" corners in the top-left and bottom-right to make it look like a worn piece of paper.
+4. **Moonshine Shootout Bonus Game**: When the main deck runs out, the server checks the scores. If any players have *zero cards*, they are pulled into a final sudden-death shootout against the current leader(s). If a zero-point player shoots the moonshine jug faster than a leading player, they steal the leader's entire bounty and share it amongst the other zero-point players!
+
+```python
 import socket
 import threading
 import json
@@ -1262,3 +1280,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
