@@ -1,3 +1,19 @@
+Prompt:
+Address the following:
+- In the moonshine bonus game, the graphics should show a moonshine jug with "XXX" on the label.  
+- If the "P" is pressed, the game should pause.
+- If the "D" is pressed during the game rules page, before pressing spacebar, then the game should write out all the game text to a text file that is timestamped in the filename with Epoch seconds (like the file name "debug_1772870883.log").
+
+Response:
+Here is the complete, updated code.
+
+### New Features Added:
+
+1. **Moonshine Jug Graphic:** A customized, procedural moonshine jug (complete with a cork, handle, and a stained "XXX" label) is drawn directly in the center of the table when the final shootout round activates.
+2. **Server-Synchronized Pause:** Pressing `P` at any time will send a pause command to the server. The server halts the progression of the game loop and broadcasts a pause state, which draws a massive red "PAUSED" overlay on all clients' screens. Pressing `P` again resumes the game.
+3. **Debug Text Dump:** Pressing `D` while on the Wanted Poster "Rules" page will instantly write out all the rules and your entire local message history to a timestamped text file (e.g., `debug_1772870883.log`) in your current folder.
+
+```python
 import socket
 import threading
 import json
@@ -1350,3 +1366,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
