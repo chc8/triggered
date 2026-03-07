@@ -124,3 +124,4 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 Would you like me to draft a quick setup guide for your friends so they know how to connect to your IP address when you host?
 
 ```
+Additional sounds: Joseph SARDIN - BigSoundBank.com (A single shot of .357 Magnum.)

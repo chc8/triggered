@@ -1,3 +1,21 @@
+Prompt:
+Address the following and provide the code all in one part:
+- When there is a tie, change the game play such that the tied players are dealt another special quickdraw round with only the tied players.  If the quickdraw round has a tie, then use Thumper Power to choose a winner (larger thumper power wins), and if Thumper Power is tied, then the dealer wins.
+- For the saloon ledger questions at the start, the keypad enter key should also work the same as the main keyboard enter key.
+- The style of the saloon ledger should be updated to look more western, like a old fashioned wanted poster paper.
+- When the 'Q' key is used, it should turn off the sound.
+
+Response:
+Here is the fully updated code incorporating all of your requested features.
+
+### Key Changes Implemented:
+
+1. **Tie-Breaker Quickdraw Round**: If there is a tie on the trigger draw or high card, the server now temporarily pauses the main round and initiates a `play_quickdraw_round()`. It deals exclusively to the tied players. If they tie *again*, it resolves by comparing Thumper Power, and then defaults to the dealer if Thumper Powers are identical.
+2. **Keypad Enter Support**: Added `pygame.K_KP_ENTER` to the event listener alongside `pygame.K_RETURN` so both Enter keys work for the setup form.
+3. **Wanted Poster Styling**: The Saloon Ledger has been redesigned to look like an old "WANTED" poster, utilizing a parchment background, dark ink styling, a framed border, and fill-in-the-blank style lines instead of modern white input boxes.
+4. **Mute Toggle (Q Key)**: Pressing the `Q` key will toggle the internal `self.sound_enabled` flag, dropping the music volume to 0 and preventing the gunshot `.play()` commands from triggering. A visual notification will alert you to the sound state.
+
+```python
 import socket
 import threading
 import json
@@ -1140,3 +1158,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```

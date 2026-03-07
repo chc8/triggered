@@ -1,5 +1,1 @@
-todo: find a way to use thumper power in game play
-todo: when entering the answers at the start, make it so the kaypad enter key also works
-todo: when there is a tie, have a new mode of playing a draw somehow 
 todo: make some optional button controls for mouse
-
