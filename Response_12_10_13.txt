@@ -1,3 +1,17 @@
+Prompt:
+Address the following:
+- The rules page should not show the instruction to Press 'D' to Dump Text.  This 'D' command is a feature only for testers, and it is not for players to know.
+- The 'D' command should cause the text in the game, after the saloon doors open, to be logged and appended to the log file as the game plays.  The intent is to capture game text output during gameplay for testing purposes.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Hidden Debug Feature:** The prompt telling the player to press 'D' on the title screen has been completely removed so it remains a secret feature for testers only.
+2. **Continuous Logging:** When you press 'D' on the title screen, it now sets the game into a persistent debug mode. It generates the initial timestamped log file, and as the game progresses (after the doors open), it actively appends every new line of game text and local actions directly to the file in real-time.
+
+```python
 import socket
 import threading
 import json
@@ -1380,3 +1394,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
