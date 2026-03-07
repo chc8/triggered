@@ -1,3 +1,19 @@
+Prompt:
+Address the following:
+- When there is a quickdraw round, on the graphical side show two colt .45 pistols on the graphical side, one on each side of the bullseye card.  This will show the players it is a special quickdraw round.
+- When the moonshine bonus game happens, the names of the leaders and zero point players should be drawn on a sign on the graphical side during the delay waiting for the moonshine jug to appear.
+- After the moonshine jug is shot, the cork should pop off the top of the jug and fly into the air.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Quickdraw Pistols:** Added a procedural vector graphic for the Colt .45. When the game enters a tie-breaker round, two crossed/flanking pistols appear on the table beside the bullseye card.
+2. **Moonshine Waiting Sign:** Instead of a generic text banner, there is now a dedicated graphical wooden sign that drops down *during the delay* before the jug is thrown. It clearly lists the zero-point "Hunters" and the "Leaders" who are risking their bounties.
+3. **Popping Cork Physics:** The moonshine jug's cork is now an independent element with basic gravity physics. The moment a player shoots the jug, the cork flies off the top in a random arc.
+
+```python
 import socket
 import threading
 import json
@@ -1546,3 +1562,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
