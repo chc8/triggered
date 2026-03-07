@@ -1,3 +1,18 @@
+Prompt:
+There are problems that need to be fixed:
+- In the last code provided the game no longer is handling the player dealt cards correctly.  The cards are not being dealth face down and also not flipped at the dealer Click Click time.  Also the previous round of player cards appear to stay on the screen.
+- The moonshine jub cork did not pop off when the jug was shot with the firs bullet.
+
+Response:
+I completely see what happened. In the previous update, the server broadcast for the start of the round (`"--- ROUND 2 --- Dealer is shufflin'"`) got intercepted too early by a new filter, meaning the client never actually ran the "shuffle" logic to sweep the old cards off the screen and deal the new ones face-down!
+
+I have fixed that message trap so the game properly resets the table, sweeps the old cards off-screen, and deals the new round face-down before flipping them.
+
+I've also updated the moonshine jug logic so the moment *any* bullet hits the jug (whether it's you pressing 'T' locally or receiving a gunshot from another player), the cork instantly pops off and arcs away with gravity.
+
+Here is the fully repaired code:
+
+```python
 import socket
 import threading
 import json
@@ -1540,3 +1555,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
