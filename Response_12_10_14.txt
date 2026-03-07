@@ -1,3 +1,19 @@
+Prompt:
+Address the following:
+- In the moonshine bonus round, the only graphical image should be the moonshine jug.  The moonshine jug should be about the same size as the bullseye cards are.  When the players shoot the moonshine jug, the moonshine jug should show gunshot holes placed at random locations.
+- In the moonshine bonus round, the players who should be involved (the zero point playres, and the leader(s) point players, should be listed, both in text, and in the graphics for a second.  If a different player shoots the moonshine jug voluntarily, and they have points, announce their joining the fun and also put their points at risk to be split.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Isolated Moonshine Graphics:** The `draw_game_screen` method now checks if `self.show_moonshine_jug` is active. If it is, it completely hides the player cards and bullseye card, drawing *only* a large moonshine jug (approx 150x210) directly in the center of the table.
+2. **Interactive Jug Physics:** Bullet holes and gunshot flashes are now dynamically routed. If the moonshine jug is on screen, pressing 'T' (or receiving a remote shot) applies the bullet hole offset directly to the jug's surface instead of a card.
+3. **Graphical Player Banner:** When the moonshine round starts, a golden `SHOOTOUT: Zeros vs Leaders` banner prominently flashes across the top of the graphical window for 3 seconds so everyone knows who is currently involved.
+4. **Voluntary Risk Mechanic:** The `register_trigger` server logic has been updated. If a player who is *not* a zero-pointer and *not* a leader presses the trigger during the moonshine round, the server dynamically catches it, adds them to the "at risk" list, and broadcasts `"[!] Player joins the fun and risks their X cards!"` so their points can be stolen too.
+
+```python
 import socket
 import threading
 import json
@@ -1455,3 +1471,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
