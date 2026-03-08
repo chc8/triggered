@@ -1,3 +1,18 @@
+Prompt:
+Address the following:
+- Improve the rules/title page, so it has a western theme.  Display some colt .45 six shooters, and a cowboy silhouette.  Make the title letters look like wood.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Wooden 3D Title:** The "TRIGGERED" title now renders using a stacked pseudo-3D extrusion technique. It uses the `WOOD_DARK` and `WOOD_BASE` colors to create thick, heavy, carved wooden block letters.
+2. **Flanking Colt .45s:** I reused your procedural `draw_pistol` method to place two high-resolution six-shooters pointing outward on either side of the wooden title.
+3. **Cowboy Silhouette:** I used procedural polygons, ellipses, and rectangles to draw a classic "Man with No Name" cowboy silhouette (complete with a wide-brim hat, poncho, and boots) standing in the shadows on the right side of the rules.
+4. **Western Atmosphere:** The background of the title screen was changed from pure black to a dark, dusty wood/leather hue `(35, 20, 15)` to give it a warmer, more thematic saloon feel before you kick open the doors.
+
+```python
 import socket
 import threading
 import json
@@ -1659,3 +1674,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
