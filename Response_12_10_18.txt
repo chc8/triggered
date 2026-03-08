@@ -1,3 +1,19 @@
+Prompt:
+Address the following:
+- The moonshine jug flash should not be in the shape of a card.  Make the flash the shape of the jug.
+- At the end of the game when the winner sign is displayed, remove the cards from the screen before the winner sign is displayed.
+- Before starting a quick draw round show a sign on the page for a second displaying the names of the tied players about to have a quickdraw round to sort out the tie.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Jug-Shaped Flash:** I removed the rectangular border-radius flash. Now, when the moonshine jug is shot, the code draws an identical, pure-white silhouette of the jug (circle body, neck, and handle) onto an alpha surface to create a perfectly shaped flash.
+2. **Clear Table at Game Over:** I wrapped the normal card and jug rendering loop inside an `if not self.game_over:` check. Now, the moment the "FINAL BOUNTIES" message triggers the game-over state, all cards instantly vanish to provide a clean green table for the final Winner Board.
+3. **Quickdraw Warning Sign:** Added a new graphical wooden sign (similar to the moonshine one) that drops down to the center of the table for 2 seconds right before a quickdraw round starts. It displays the text "QUICKDRAW TIE-BREAKER!" along with the names of the tied players.
+
+```python
 import socket
 import threading
 import json
@@ -1623,3 +1639,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
