@@ -1,6 +1,2 @@
 todo: Update the README.MD file.  Needs to be adjusted for latest version.  Fix the "Clone the repository" text section, with "yourusername" to be something else or remove it.  In the prompt instruct adding the line about the credits for the gunshot sound.  Also in the prompt have Gemini 3.1 Pro git itself credit for vibe coding with the developer chc8.  
 todo: consider packaging the software for relase
-todo: check if the conversion from pounds to kilograms was lost, seems like it did that at least once
-todo: fix the moonshine jug animation so it looks like it is thrown in the 
-air.  Also what happens if nobody shoots the jug?  Then maybe nobody loses 
-their points.  The jug will need to be shot while it is in the air.

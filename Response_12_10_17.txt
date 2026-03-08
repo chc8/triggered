@@ -1,3 +1,17 @@
+Prompt:
+Address the following:
+- At the end if there is a bonus game, the moonshine jug should be animated to be thrown up from the bottom of the screen, arc to near the top of the page, then fall back down.  It can only be shot if it is on the screen.  If nobody shoots the jug while it is on the screen then no players lose their points.
+
+Response:
+Here is the fully updated code.
+
+### Changes Made:
+
+1. **Jug Throw Animation & Physics:** The moonshine jug now shoots up from the bottom of the screen, hangs in the air, and falls back down using gravity kinematics (taking exactly 2.5 seconds to arc). A dynamic shadow sits on the table, growing and shrinking as the jug changes height to give it a 3D feel.
+2. **On-Screen Restraint:** You (and the bots) only have a 2.5 second window to hit the jug while it is airborne. If you press 'T' after it falls off the screen, it does nothing. If nobody hits it during the 2.5-second animation arc, the server declares that the leaders keep their points.
+3. **World-Space Cork Pop:** The cork popping physics has been separated from the jug. Now, when the jug is shot, the cork flies off relative to the world space and arcs away independently, while the jug continues its original falling trajectory.
+
+```python
 import socket
 import threading
 import json
@@ -1583,3 +1597,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
