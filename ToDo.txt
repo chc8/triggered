@@ -1,3 +1,4 @@
-
-
+todo: fix the moonshine jug animation so it looks like it is thrown in the 
+air.  Also what happens if nobody shoots the jug?  Then maybe nobody loses 
+their points.  The jug will need to be shot while it is in the air.
 
