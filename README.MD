@@ -54,10 +54,9 @@ If you match the Bullseye, be the first to reach for your iron. But draw too ear
 ## 🚀 Installation & Setup
 
 1. **Clone the repository:**
-*(Note: Replace the URL below with the actual URL of your repository by clicking the green "Code" button on GitHub and copying the link).*
 
 ```bash
-git clone [https://github.com/YourGitHubUsername/Triggered.git](https://github.com/YourGitHubUsername/Triggered.git)
+git clone [https://github.com/chc8/Triggered.git](https://github.com/chc8/Triggered.git)
 cd Triggered
 
 ```
