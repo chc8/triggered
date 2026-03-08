@@ -56,8 +56,8 @@ If you match the Bullseye, be the first to reach for your iron. But draw too ear
 1. **Clone the repository:**
 
 ```bash
-git clone [https://github.com/chc8/Triggered.git](https://github.com/chc8/Triggered.git)
-cd Triggered
+git clone [https://github.com/chc8/triggered.git](https://github.com/chc8/triggered.git)
+cd triggered
 
 ```
 
