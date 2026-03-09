@@ -1,1 +1,6 @@
+todo: add some level of normal ranges for input values (age, height, weight) and port number (warn about 
+troublesome ports) don't allow ports that don't exist.
+todo: add option to use more than one deck (maybe 2 or 3) and suggest when there are more players.  For 
+example 3 or less use 1 deck, 4 to 6 use two decks, and 6 to 7 use three decks, and an option to allow more 
+decks, but no more than 10.   
 todo: consider packaging the software for relase
