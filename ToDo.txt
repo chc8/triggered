@@ -1,2 +1,3 @@
-todo: allow editing of the values inputed on the start page.  The player should be allowed to use the arrow keys to move between value fields, and use the backspace key to edit the values.
+todo: In the moonshine round, the bullet holes were not shown, and no sound was heard for the bullets.  Fix this.
+todo: The AI players are a little too fast to shoot now, make their default a little slower, but allow a very rare occasion for a super fast response.
 todo: consider packaging the software for relase
