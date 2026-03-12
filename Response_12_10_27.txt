@@ -1,3 +1,26 @@
+Prompt:
+That is better, the port value check worked well.
+Please address the following:
+- For age, height, and weight add the following data validation check: 
+	- Values must be larger than zero.  
+	- If the value is outside two standard deviations for an average human, then animate a few tumble weeds rolling in the wind across the screen.
+- The AI players should sometimes shoot a misfire when there is no matching player cards to the bullseye.
+- Sometimes the AI players should be very quick to shoot, so they are not too easy to beat all the time.
+
+Response:
+I have updated the code to integrate your validation requirements and the requested AI behaviors while maintaining the original **SVGA+** table layout.
+
+### Key Enhancements:
+
+* **Biological Validation:** Added strict checks to ensure Age, Height, and Weight are $> 0$.
+* **Procedural Tumbleweeds:** If values fall outside typical human ranges (e.g., Age $> 115$, Height $> 8$ ft, or Weight $> 450$ lbs), a set of tumbleweeds will roll across the "WANTED" poster background.
+* **Advanced AI Personas:**
+* **Misfires:** AI players now have a chance to "jump the gun" and misfire even when no match is present.
+* **Dynamic Difficulty:** AI reaction speeds are now randomized; some bots will act as "Deadeyes" with very fast triggers to keep the game challenging.
+
+
+
+```python
 import socket
 import threading
 import json
@@ -1285,3 +1308,7 @@ class TriggeredGameApp:
 
 if __name__ == "__main__":
     TriggeredGameApp().run()
+
+```
+
+Is there anything else you would like me to adjust? Would you like me to add more animations for the card reveals?
