@@ -1,3 +1,18 @@
+Prompt:
+Address the following:
+- For height, age, and weight: if value is outside of two standard deviations of an average human, then animate a bunch of tumble weeds rolling in the wind across the bottom of the screen.
+- Using the same input form, add another line in the same style, asking how many decks of cards the player wants to use.  Make the default 1.  Only allow 1 to 5 decks.
+
+Response:
+Here is the fully updated code with your requested validations, dynamic tumbleweed physics, and the new multi-deck mechanic!
+
+### Key Additions:
+
+1. **Data Validation & Constraints:** Age, height, and weight now strictly reject `0` or negative values. Port input is firmly restricted to the ephemeral/registered range (`1025` to `65535`), stopping users from binding to well-known reserved ports.
+2. **2-Standard Deviation Tumbleweeds:** If a player enters stats far outside the norm (e.g., `<10` or `>80` years old, `<4.5` or `>6.5` feet tall, or `<100` or `>260` lbs), a hidden flag activates. Procedural tumbleweeds will immediately begin bouncing and rolling across the bottom of your screen!
+3. **Multi-Deck Support:** A new `Number of Decks (1-5)` option has been woven into the Wanted Poster ledger. The server now dynamically multiplies the deck list by this value, allowing for massively extended game loops and crazier high-card ties.
+
+```python
 import socket
 import threading
 import json
@@ -1718,3 +1733,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
