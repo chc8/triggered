@@ -1,3 +1,75 @@
+Prompt:
+The game allows me to enter data on the first page, but after entering the last value (port number) the game window closes unexpectedly.
+
+Response:
+It appears the game is crashing during the transition from the **SETUP** phase to the **TITLE** phase, likely due to a specific issue in the `finalize_setup` and `connect_to_server` sequence.
+
+In the provided code, if the server fails to bind to the port or the client fails to connect, the `Exception` block in `connect_to_server` triggers an error message but does not stop the logic from potentially hitting a `NoneType` error later if the socket wasn't created properly. Additionally, the `os._exit(0)` call used in the server logic is a very "hard" exit that will close the entire process immediately if an unhandled exception occurs during the thread startup.
+
+### Likely Causes for the Crash
+
+* **Port Conflict:** If you are running the **Host (S)** and the port you chose is already being used by another application (like a web browser or another instance of the game), the `server.start()` method will fail to bind, causing the thread to die or the application to hang.
+* **Connection Timeout:** If you are playing as a **Client (C)** and the IP address or Port is unreachable, the `client_socket.connect` call might hang the main thread, making the window appear to "crash" or become unresponsive before finally closing.
+* **Missing Assets:** The code attempts to load `western_theme.mp3` and `gunshot.wav`. If these files are missing, the `pygame.mixer` might throw an error. While there are `try/except` blocks, a failure in the mixer initialization can sometimes destabilize the Pygame window.
+
+---
+
+### How to Fix the "Exit on Finalize" Issue
+
+To prevent the window from closing, we should add a more robust check to ensure the server is actually ready before the client tries to join it.
+
+**Update the following section in your code:**
+
+```python
+    def finalize_setup(self):
+        pygame.display.set_caption("TRIGGERED - High Res Edition" + (" [HOST]" if self.is_host else ""))
+        
+        if self.is_host:
+            # Add a check to see if the server starts successfully
+            self.server = TriggeredServer(self.port, self.ai_count)
+            self.server.start()
+            # Give the server a moment to bind to the socket
+            time.sleep(1.0) 
+            self.host_ip = '127.0.0.1'
+            
+        self.connect_to_server()
+
+    def connect_to_server(self):
+        try:
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Set a timeout so it doesn't hang forever
+            self.client_socket.settimeout(5.0) 
+            self.client_socket.connect((self.host_ip, self.port))
+            # Reset timeout to blocking for game messages
+            self.client_socket.settimeout(None) 
+            
+            info = json.dumps({'name': self.name, 'thumper': self.thumper})
+            self.client_socket.sendall(info.encode() + b"\n")
+            
+            self.state = 'TITLE'
+            # ... rest of the code
+        except Exception as e:
+            # Print the actual error to the console so you can see why it's crashing
+            print(f"Connection failed: {e}")
+            self.setup_step = 'PORT'
+            self.setup_error = f"Link Failed: {e}"
+
+```
+
+**Would you like me to provide the full, corrected script with these stability fixes integrated into the SVGA+ layout?**
+
+
+Prompt 2:
+I can't handle code parts, please provide the entire code as one part, and ensure it is checked for errors.
+
+Response 2:
+It sounds like the crash was caused by the network connection attempting to fire before the server was fully initialized or reachable. I have combined all the previous requirements—the original **SVGA+ table layout**, the **biometric validation with tumbleweeds**, the **AI misfire logic**, and the **port security**—into one single, robust file.
+
+I have added a **connection timeout** and **error trapping** to ensure that if the connection fails, the game stays open and returns you to the Port entry screen with a clear error message instead of closing the window.
+
+### Full Game Code: TRIGGERED
+
+```python
 import socket
 import threading
 import json
@@ -373,3 +445,7 @@ SVGA = {'BG_GREEN': (24, 66, 38), 'BLACK': (20, 20, 20), 'WHITE': (245, 245, 245
         'POSTER': (222, 199, 155), 'POSTER_DARK': (160, 130, 90), 'INK': (45, 35, 25), 'WOOD_BASE': (139, 90, 43), 'WOOD_DARK': (80, 50, 20)}
 
 if __name__ == "__main__": TriggeredGameApp().run()
+
+```
+
+Would you like me to add more detailed graphics for the cards or the shooting animations in the next update?
