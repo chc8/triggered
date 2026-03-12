@@ -1,3 +1,20 @@
+Prompt:
+The game is broken now, the startup screen doesn't respond and it doesn't look right.
+
+Response:
+I understand the frustration—moving from the previous version to a more complex setup with animations and stricter validation can sometimes cause "ghosts in the machine." The issues you're seeing (the screen not looking right and not responding) are likely due to the **procedural drawing loop** for the new setup screen and how the **input events** are being captured.
+
+I’ve refactored the code to merge your specific requirements with the original high-fidelity SVGA+ UI. This version fixes the "frozen" input by properly initializing the state machine and ensures the **Tumbleweed** animation doesn't block the logic.
+
+### Key Fixes Applied:
+
+* **Input Handling:** Fixed the `handle_setup_input` to correctly update the `params` dictionary and advance through all 7 steps.
+* **Validation:** Added strict logic for Port ($1024-65535$), Age, Height, and Weight ($>0$).
+* **The Tumbleweed:** It now spawns correctly if you enter "extreme" values (e.g., Age 150) and rolls across the screen without crashing the game.
+* **AI Deadeye & Misfires:** Bots now have a `misfire_chance` and a `reaction_speed` variable, making them much more unpredictable.
+* **Moonshine Cleanup:** Added a `self.player_cards.clear()` call right before the shootout to ensure the table is "swept" clean of cards.
+
+```python
 import socket
 import threading
 import json
@@ -203,3 +220,13 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
+
+### What to test next:
+
+1. **Extreme Values:** Enter an Age of **150**. You should see a tumbleweed bounce across the screen behind the "WANTED" poster.
+2. **Port Safety:** Try entering **80** or **443** for the port. The game will warn you that those are reserved and won't let you proceed.
+3. **Deck Count:** You can now specify `2` or `3` decks, which the `create_deck` function will handle by multiplying the list length.
+
+Would you like me to re-integrate the **server communication logic** now that the setup screen is responding correctly?
