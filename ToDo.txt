@@ -1,6 +1,2 @@
-todo: in a quickdraw, if the bullesys matches a card, and the player triggers, then that player should win the quickdraw. 
-todo: after the moonshine bonus game ends, the cards should not be showing by then.  The cards should be shuffled off the table before the moonshine 
-round starts.
-todo: the AI players should occasionally shoot a misfire, when there is no matching player cards to the bullseye.
-todo: sometimes the AI players should be very quick to shoot, so they are not too easy to beat all the time.
+todo: allow editing of the values inputed on the start page.  The player should be allowed to use the arrow keys to move between value fields, and use the backspace key to edit the values.
 todo: consider packaging the software for relase

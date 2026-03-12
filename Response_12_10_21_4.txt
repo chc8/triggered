@@ -1,3 +1,17 @@
+Prompt:
+Address the following:
+- Allow editing of the values input-ed on the start page.  The player should be allowed to use the arrow keys to move between value fields, and use the backspace key to edit the values. 
+- In the moonshine round, the cards did not clear the table before the moonshine round started.  The cards were still visible when the moonshine round ended.  Please fix this so the cards are off the table already before the moonshine round starts.
+
+Response:
+Here is the completely updated code fixing the Moonshine card clearing issue and implementing full navigation editing on the setup form!
+
+### Key Updates:
+
+1. **Interactive Setup Editing:** The setup page has been fully refactored to support navigating up and down the form using the `UP` and `DOWN` arrow keys. You can now revisit any field, use `BACKSPACE` to fix mistakes, and immediately see the changes before pressing `ENTER` to submit the entire page.
+2. **Clean Moonshine Table:** Added a trap in the client message receiver that listens for the `"=== GAME OVER!"` deck empty message. It instantly sweeps all remaining cards off the green felt, ensuring the table is perfectly clean *before* the Moonshine jug and waiting sign are rendered.
+
+```python
 import socket
 import threading
 import json
@@ -1735,3 +1749,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
