@@ -1,3 +1,1 @@
-todo: In the moonshine round, the bullet holes were not shown, and no sound was heard for the bullets.  Fix this.
-todo: The AI players are a little too fast to shoot now, make their default a little slower, but allow a very rare occasion for a super fast response.
 todo: consider packaging the software for relase

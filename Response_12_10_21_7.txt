@@ -1,3 +1,14 @@
+Prompt:
+The speed which the AI players shoot needs to be a little fast, only because they don't shoot fast enough to hit the moonshine jug.
+
+Response:
+Here is the fully updated code.
+
+The issue was that the AI's normal reaction time was occasionally pushing up to 3.5 seconds, but the jug is only in the air for 2.5 seconds (`JUG_AIR_TIME`). Because of this, the bots were often shooting after the jug had already hit the floor!
+
+I have adjusted the AI logic so their normal reaction window in the moonshine round firmly caps at 2.4 seconds, guaranteeing they take their shot while the jug is still on the screen. I also tightened up their default reaction speeds slightly in the main rounds to keep them competitive.
+
+```python
 import socket
 import threading
 import json
@@ -1743,3 +1754,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
