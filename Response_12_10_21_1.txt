@@ -1,3 +1,18 @@
+(back to original conversation thread)
+Prompt:
+Address the following:
+- Add data validation for age, height, and weight.  All of these values should be greater than zero.
+- Port numbers should only be allowed in the acceptable range, and not well known ports.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Age, Height, and Weight Validation:** Added checks to ensure the parsed float values are strictly greater than zero. If the user enters `0` or a negative number, it stops them and displays an error message.
+2. **Port Number Validation:** The port input is now restricted to the ephemeral/registered range (`1025` to `65535`). If a user tries to enter a well-known port (like 80 or 443) or an invalid port, it throws an error and asks them to try again.
+
+```python
 import socket
 import threading
 import json
@@ -1660,3 +1675,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
