@@ -1,1 +1,3 @@
 todo: consider packaging the software for relase
+todo: use github actions to build
+todo: on start page tuble weeds should only appear when the cursor leaves the field and the value is over two standard deviations from an average human.  If the cursor is still being used to enter more characters the tubleweeds shouldn't appear, so wait for the cursor to leave the feild to check.  Also if the value is changed back to withing two standard deviations, then stop making tumble weeds appear.
