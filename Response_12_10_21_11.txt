@@ -1,3 +1,18 @@
+prompt:
+-On start page tumble weeds should only appear when both: the cursor leaves the field AND the value is over two standard deviations from an average human.  
+-If the cursor is still being used to enter more characters the tubleweeds shouldn't appear, so wait for the cursor to leave the field to check over two standard deviations.  
+-Also if the value is changed back to within two standard deviations, then stop making tumble weeds appear, and just let the current tubleweeds roll in the wind off the screen, but the wind picks up speed and the direction of the tubleweeks is up into the top right hand of the screen.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Validation on Exit:** The code now checks if the value is out of bounds *only* when you press `ENTER`, `UP`, or `DOWN` to leave the current field. Typing a strange number won't instantly spawn tumbleweeds until you commit to it by navigating away.
+2. **Tumbleweed State Machine:** Instead of a simple ON/OFF switch, tumbleweeds now have three states: `OFF`, `ROLLING`, and `BLOWING_AWAY`.
+3. **Wind Exit Animation:** If you fix an out-of-bounds number and leave the field, the `BLOWING_AWAY` state triggers. The script accelerates the tumbleweeds' speed and dynamically alters their Y-axis trajectory, blowing them up into the top-right corner of the screen until they are gone.
+
+```python
 import socket
 import threading
 import json
@@ -1793,3 +1808,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
