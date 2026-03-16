@@ -55,6 +55,9 @@ class TriggeredServer:
         self.trigger_phase = False 
         self.is_paused = False
         
+        self.quickdraw_active = False
+        self.quickdraw_players = []
+        
         self.moonshine_active = False
         self.moonshine_risk_players = []
         self.moonshine_zero_players = []
@@ -78,6 +81,13 @@ class TriggeredServer:
 
     def register_trigger(self, player_name):
         with self.lock:
+            # Block spectators from participating in quickdraws
+            if self.game_active and self.quickdraw_active and player_name not in self.quickdraw_players:
+                if not any(name == player_name for t, name in self.trigger_calls):
+                    self.trigger_calls.append((time.time(), player_name))
+                    self.broadcast({'msg': f"  [-] Calm down, {player_name}! It's not your turn to shoot."})
+                return
+
             if self.trigger_phase:
                 if not any(name == player_name for t, name in self.trigger_calls):
                     self.trigger_calls.append((time.time(), player_name))
@@ -91,7 +101,9 @@ class TriggeredServer:
                     else:
                         self.broadcast({'msg': f"  [!] *BANG* {player_name} reached for their iron!"})
             elif self.game_active:
-                self.broadcast({'msg': f"  [-] *Click* {player_name} drew too early! (Wait for the cue!)"})
+                if not any(name == player_name for t, name in self.trigger_calls):
+                    self.trigger_calls.append((time.time(), player_name))
+                    self.broadcast({'msg': f"  [-] *Click* {player_name} drew too early! (Wait for the cue!)"})
 
     def handle_client(self, conn):
         try:
@@ -219,118 +231,127 @@ class TriggeredServer:
             self.broadcast({'msg': f"{winner['name']} wins the tiebreaker with superior Thumper Power ({winner['thumper']})!"})
             return winner, 0
 
-    def play_quickdraw_round(self, tied_player_names, dealer, deck):
-        tied_objs = [p for p in self.players if p['name'] in tied_player_names]
-        tie_pot = len(tied_objs) + 1
+    def play_quickdraw_round(self, tied_player_names, dealer, deck, current_pot):
+        self.quickdraw_active = True
+        self.quickdraw_players = tied_player_names.copy()
         
-        if len(deck) < tie_pot + 1:
-            self.broadcast({'msg': "Deck is too low for a tiebreaker! Resolving by Thumper..."})
-            w, _ = self.resolve_by_thumper(tied_objs, dealer)
-            return w, tie_pot
-
-        self.broadcast({'msg': f"QUICKDRAW_BANNER|{','.join(tied_player_names)}"})
-        self.broadcast({'msg': f"\n--- SPECIAL QUICKDRAW ROUND --- Dealer is shufflin' tiebreaker cards..."})
-        self.safe_sleep(2.0)
-        
-        round_cards = {}
-        for p in tied_objs:
-            round_cards[p['name']] = deck.pop()
-        bullseye = deck.pop()
-        
-        self.broadcast({'msg': f"Cards dealt face down in the dirt. The Tiebreaker Bullseye is:"})
-        self.broadcast({'msg': f"\n      >>> {bullseye['value']} of {bullseye['suit']} <<<\n"})
-        
-        self.safe_sleep(2)
-        
-        with self.lock:
-            self.trigger_calls.clear()
-            self.trigger_phase = True
+        try:
+            tied_objs = [p for p in self.players if p['name'] in tied_player_names]
+            tie_pot = len(tied_objs) + 1
+            total_pot = current_pot + tie_pot
             
-        self.broadcast({'msg': f"{dealer['name']} draws and yells: 'CLICK CLICK'! (Turn 'em over!)"})
-        
-        cards_display = "Tiebreaker Cards revealed:\n" + "\n".join([f"  - {name}: {c['value']} of {c['suit']}" for name, c in round_cards.items()])
-        self.broadcast({'msg': cards_display})
-        
-        match_exists = any(c['value'] == bullseye['value'] for c in round_cards.values())
+            if len(deck) < tie_pot + 1:
+                self.broadcast({'msg': "Deck is too low for a tiebreaker! Resolving by Thumper..."})
+                w, _ = self.resolve_by_thumper(tied_objs, dealer)
+                return w, tie_pot
 
-        if match_exists:
+            self.broadcast({'msg': f"QUICKDRAW_BANNER|{','.join(tied_player_names)}"})
+            self.broadcast({'msg': f"\n--- SPECIAL QUICKDRAW ROUND --- Dealer is shufflin' tiebreaker cards..."})
+            self.safe_sleep(2.0)
+            
+            round_cards = {}
             for p in tied_objs:
-                if p['is_ai']:
-                    if random.random() < 0.2:
-                        reaction = random.uniform(0.15, 0.6)
-                    else:
-                        reaction = random.uniform(0.6, 4.0)
-                    threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
-
-            self.safe_sleep(TRIGGER_WINDOW)
+                round_cards[p['name']] = deck.pop()
+            bullseye = deck.pop()
+            
+            self.broadcast({'msg': f"Cards dealt face down in the dirt. The Tiebreaker Bullseye is:"})
+            self.broadcast({'msg': f"\n      >>> {bullseye['value']} of {bullseye['suit']} <<<\n"})
+            
+            self.safe_sleep(2)
             
             with self.lock:
-                self.trigger_phase = False 
-                valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
-                if valid_calls:
-                    valid_calls.sort(key=lambda x: x[0])
-                    fastest_time = valid_calls[0][0]
-                    ties = [name for t, name in valid_calls if t - fastest_time < 0.1]
-                    
-                    if len(ties) > 1:
-                        self.broadcast({'msg': f"Another tie! Resolving by Thumper Power..."})
-                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in ties], dealer)
-                        return w, tie_pot
-                    else:
-                        winner_name = ties[0]
-                        self.broadcast({'msg': f"*** {winner_name} WON THE TIEBREAKER! ***"})
-                        w = next(p for p in tied_objs if p['name'] == winner_name)
-                        return w, tie_pot
-                else:
-                    self.broadcast({'msg': "Nobody pulled the trigger! Checking high card..."})
-                    high_players = self.get_high_card_winners(round_cards)
-                    if len(high_players) > 1:
-                        self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
-                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
-                        return w, tie_pot
-                    else:
-                        winner_name = high_players[0]
-                        self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
-                        w = next(p for p in tied_objs if p['name'] == winner_name)
-                        return w, tie_pot
-        else:
-            for p in tied_objs:
-                if p['is_ai']:
-                    if random.random() < 0.05: 
-                        reaction = random.uniform(0.5, 2.5)
+                self.trigger_calls.clear()
+                self.trigger_phase = True
+                
+            self.broadcast({'msg': f"{dealer['name']} draws and yells: 'CLICK CLICK'! (Turn 'em over!)"})
+            
+            cards_display = "Tiebreaker Cards revealed:\n" + "\n".join([f"  - {name}: {c['value']} of {c['suit']}" for name, c in round_cards.items()])
+            self.broadcast({'msg': cards_display})
+            
+            match_exists = any(c['value'] == bullseye['value'] for c in round_cards.values())
+
+            if match_exists:
+                for p in tied_objs:
+                    if p['is_ai']:
+                        if random.random() < 0.15:
+                            reaction = random.uniform(0.15, 0.7)
+                        else:
+                            reaction = random.uniform(0.8, 4.8)
                         threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
 
-            self.safe_sleep(3.0) 
-            with self.lock:
-                self.trigger_phase = False
-                valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
-                if valid_calls:
-                    valid_calls.sort(key=lambda x: x[0])
-                    first_trigger_name = valid_calls[0][1]
-                    
-                    if first_trigger_name == dealer['name']:
-                        self.broadcast({'msg': f"Misfire! The Dealer ({dealer['name']}) drew on a ghost!"})
-                        self.broadcast({'msg': f"The dealer loses! {tie_pot} cards are scattered randomly to the other players."})
-                        other_players = [p for p in self.players if p['name'] != dealer['name']]
-                        if other_players:
-                            for _ in range(tie_pot):
-                                random.choice(other_players)['score'] += 1
-                        return None, 0
+                self.safe_sleep(TRIGGER_WINDOW)
+                
+                with self.lock:
+                    self.trigger_phase = False 
+                    # Only accept triggers from the tied participants
+                    valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
+                    if valid_calls:
+                        valid_calls.sort(key=lambda x: x[0])
+                        fastest_time = valid_calls[0][0]
+                        ties = [name for t, name in valid_calls if t - fastest_time < 0.1]
+                        
+                        if len(ties) > 1:
+                            self.broadcast({'msg': f"Another tie! Resolving by Thumper Power..."})
+                            w, _ = self.resolve_by_thumper([p for p in self.players if p['name'] in ties], dealer)
+                            return w, tie_pot
+                        else:
+                            winner_name = ties[0]
+                            self.broadcast({'msg': f"*** {winner_name} WON THE TIEBREAKER! ***"})
+                            w = next(p for p in self.players if p['name'] == winner_name)
+                            return w, tie_pot
                     else:
-                        self.broadcast({'msg': f"Misfire! {first_trigger_name} got trigger-happy with no match."})
-                        self.broadcast({'msg': f"Dealer {dealer['name']} takes the pot."})
-                        return dealer, tie_pot
-                else:
-                    high_players = self.get_high_card_winners(round_cards)
-                    if len(high_players) > 1:
-                        self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
-                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
-                        return w, tie_pot
+                        self.broadcast({'msg': "Nobody pulled the trigger! Checking high card..."})
+                        high_players = self.get_high_card_winners(round_cards)
+                        if len(high_players) > 1:
+                            self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
+                            w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
+                            return w, tie_pot
+                        else:
+                            winner_name = high_players[0]
+                            self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
+                            w = next(p for p in tied_objs if p['name'] == winner_name)
+                            return w, tie_pot
+            else:
+                for p in tied_objs:
+                    if p['is_ai']:
+                        if random.random() < 0.05: 
+                            reaction = random.uniform(0.5, 2.5)
+                            threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
+
+                self.safe_sleep(3.0) 
+                with self.lock:
+                    self.trigger_phase = False
+                    valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
+                    if valid_calls:
+                        valid_calls.sort(key=lambda x: x[0])
+                        first_trigger_name = valid_calls[0][1]
+                        
+                        if first_trigger_name == dealer['name']:
+                            self.broadcast({'msg': f"Misfire! The Dealer ({dealer['name']}) drew on a ghost!"})
+                            self.broadcast({'msg': f"The dealer loses! {total_pot} cards are scattered randomly to the other players."})
+                            other_players = [p for p in self.players if p['name'] != dealer['name']]
+                            if other_players:
+                                for _ in range(total_pot):
+                                    random.choice(other_players)['score'] += 1
+                            return None, -current_pot
+                        else:
+                            self.broadcast({'msg': f"Misfire! {first_trigger_name} got trigger-happy with no match."})
+                            self.broadcast({'msg': f"Dealer {dealer['name']} takes the pot."})
+                            return dealer, tie_pot
                     else:
-                        winner_name = high_players[0]
-                        self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
-                        w = next(p for p in tied_objs if p['name'] == winner_name)
-                        return w, tie_pot
+                        high_players = self.get_high_card_winners(round_cards)
+                        if len(high_players) > 1:
+                            self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
+                            w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
+                            return w, tie_pot
+                        else:
+                            winner_name = high_players[0]
+                            self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
+                            w = next(p for p in tied_objs if p['name'] == winner_name)
+                            return w, tie_pot
+        finally:
+            self.quickdraw_active = False
+            self.quickdraw_players.clear()
 
     def moonshine_shootout(self, high_players, zero_players):
         self.moonshine_active = True
@@ -457,6 +478,9 @@ class TriggeredServer:
 
                 self.safe_sleep(TRIGGER_WINDOW)
                 
+                initiate_quickdraw = False
+                qd_ties = []
+                
                 with self.lock:
                     self.trigger_phase = False 
                     
@@ -466,9 +490,8 @@ class TriggeredServer:
                         ties = [name for t, name in self.trigger_calls if t - fastest_time < 0.1]
                         
                         if len(ties) > 1:
-                            self.broadcast({'msg': f"Trigger TIE between {', '.join(ties)}! Initiating Quickdraw Round!"})
-                            winner, extra_pot = self.play_quickdraw_round(ties, dealer, deck)
-                            pot += extra_pot
+                            initiate_quickdraw = True
+                            qd_ties = ties
                         else:
                             winner_name = ties[0]
                             self.broadcast({'msg': f"*** {winner_name} WAS THE FASTEST GUN! ***"})
@@ -477,13 +500,18 @@ class TriggeredServer:
                         self.broadcast({'msg': "Nobody pulled the trigger! Let's see who's holdin' the high card..."})
                         high_players = self.get_high_card_winners(round_cards)
                         if len(high_players) > 1:
-                            self.broadcast({'msg': f"Tie for the high card between {', '.join(high_players)}! Initiating Quickdraw Round!"})
-                            winner, extra_pot = self.play_quickdraw_round(high_players, dealer, deck)
-                            pot += extra_pot
+                            initiate_quickdraw = True
+                            qd_ties = high_players
                         else:
                             winner_name = high_players[0]
                             self.broadcast({'msg': f"{winner_name} holds the highest card!"})
                             winner = next(p for p in self.players if p['name'] == winner_name)
+
+                if initiate_quickdraw:
+                    self.broadcast({'msg': f"Trigger TIE between {', '.join(qd_ties)}! Initiating Quickdraw Round!"})
+                    winner, extra_pot = self.play_quickdraw_round(qd_ties, dealer, deck, pot)
+                    pot += extra_pot
+
             else:
                 for p in self.players:
                     if p['is_ai']:
@@ -492,6 +520,9 @@ class TriggeredServer:
                             threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
 
                 self.safe_sleep(3.0) 
+                
+                initiate_quickdraw = False
+                qd_ties = []
                 
                 with self.lock:
                     self.trigger_phase = False
@@ -514,13 +545,17 @@ class TriggeredServer:
                     else:
                         high_players = self.get_high_card_winners(round_cards)
                         if len(high_players) > 1:
-                            self.broadcast({'msg': f"Tie for the high card between {', '.join(high_players)}! Initiating Quickdraw Round!"})
-                            winner, extra_pot = self.play_quickdraw_round(high_players, dealer, deck)
-                            pot += extra_pot
+                            initiate_quickdraw = True
+                            qd_ties = high_players
                         else:
                             winner_name = high_players[0]
                             self.broadcast({'msg': f"{winner_name} holds the highest card!"})
                             winner = next(p for p in self.players if p['name'] == winner_name)
+
+                if initiate_quickdraw:
+                    self.broadcast({'msg': f"Tie for the high card between {', '.join(qd_ties)}! Initiating Quickdraw Round!"})
+                    winner, extra_pot = self.play_quickdraw_round(qd_ties, dealer, deck, pot)
+                    pot += extra_pot
 
             if winner:
                 winner['score'] += pot
@@ -1087,10 +1122,14 @@ class TriggeredGameApp:
                                         c.flash_alpha = 255
                                         
                             elif any(phrase in raw_msg for phrase in ["WAS THE FASTEST", "takes the pot", "holds the highest", "wins the round", "WON THE TIEBREAKER"]):
-                                for p_name, card in self.player_cards.items():
+                                winner_match = None
+                                for p_name in sorted(self.all_player_names, key=len, reverse=True):
                                     if p_name in raw_msg:
-                                        card.is_winner = True
-                                        card.shake_timer = 40  
+                                        winner_match = p_name
+                                        break
+                                if winner_match and winner_match in self.player_cards:
+                                    self.player_cards[winner_match].is_winner = True
+                                    self.player_cards[winner_match].shake_timer = 40  
                                         
                             elif "Cards dealt face down" in raw_msg:
                                 self.cards_dealt = True
@@ -1138,7 +1177,7 @@ class TriggeredGameApp:
                                 else:
                                     color = SVGA['TEXT_LIGHT']
                                     if '>>>' in m_line: color = SVGA['TEXT_BLUE']
-                                    elif 'BANG' in m_line or 'Misfire' in m_line: color = SVGA['TEXT_RED']
+                                    elif 'BANG' in m_line or 'Misfire' in m_line or 'Calm down' in m_line: color = SVGA['TEXT_RED']
                                     elif 'wins' in m_line.lower() or 'won' in m_line.lower(): color = SVGA['TEXT_GREEN']
                                     elif 'SPECIAL QUICKDRAW' in m_line or 'MOONSHINE' in m_line or 'PAUSED' in m_line or 'joins the fun' in m_line: color = SVGA['GOLD']
                                     
