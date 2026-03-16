@@ -1,0 +1,24 @@
+Role: 
+- Game developer
+- Specializing in card games using standard 52 card decks.
+
+Task: 
+- Write a game in Python that is a card game called "Triggered".
+- Write Python code, console based application
+- Multiple player game, from 2 to 8 players.
+- Application clients connects over the network to the server.  The server is the first person starting a game.
+- The server has 1 to 7 AI players that can be selected to play with.
+
+Game Objective:
+- The objective of the game is to collect the most cards.  
+
+Game play:
+- Players collect cards at the end of a round if they have the highest card, or if they call "trigger" first if they see that someone has the same value as the "bullseye" card.
+- The "Dealer" player deals a single card face down to each player.  Then the remaining cards are placed in a stack face down in the middle of the table and the top card is flipped over to show it face up so everyone can see it.  This flipped over card is called the "bullseye" card.
+- They players do not look at the face down card until instructed too.
+- Once all the cards are dealt for the round, and the bullseye card is facing up, the dealer shouts "click click", and that is the instruction for all the players to turn over their facedown cards so everyone can see the value.  The person with the highest card wins the round and keeps all the cards, unless someone notices a player with a card that matches the value of the bullseye card and they should "trigger" first, then that player wins the round.  The winner of the round then collects all the player cards, and the bullseye card to add to their collection.
+- If there is a tie between players with high cards, or when calling "trigger", then the dealer wins instead.
+- The rounds continue until there are not enough cards for another round.  
+- The dealer for the next round is the person on the left hand side of the dealer.  
+- The first dealer is chosen by "thumper power" which for each player is calculated by adding their age + height in feet + weight in kilograms.  The person with the highest value thumper power is the first dealer.  
+- The first dealer also gets to keep the remaining cards after the last round (the set of cards that remain which there are not enough to play another round).  If multiple players have the same thumper power, then they play rounds of rock-scissors-paper until a first dealer is chosen.

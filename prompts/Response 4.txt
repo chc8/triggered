@@ -1,0 +1,301 @@
+Prompt:
+There is still a problem after Click Click and the cards are flipped over.  The game stops responding there and it doesn't choose a winner for the round based on high card value.
+
+Response:
+Good catch, and I apologize for missing that! I know exactly what happened: it's a classic **threading deadlock**.
+
+When there is no match, the server locks its data to safely figure out the high card. However, inside that locked block of code, it calls the `broadcast()` function to announce the winner. The `broadcast()` function *also* tries to lock the data before sending messages. Because standard locks can't be acquired twice by the same thread, the server freezes itself forever right there, waiting for a lock it already holds.
+
+The fix is very simple: we change the standard `threading.Lock()` to a `threading.RLock()` (Reentrant Lock), which allows the same thread to acquire the lock multiple times without getting stuck.
+
+Here is the fully corrected code.
+
+### Complete `triggered.py` Code
+
+```python
+import socket
+import threading
+import json
+import time
+import random
+import sys
+
+# --- Game Constants and Logic ---
+SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+VALUES = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14}
+TRIGGER_WINDOW = 3.5  # Seconds allowed to shout "trigger" if there is a match
+
+def create_deck():
+    return [{'suit': s, 'value': v, 'rank': r} for s in SUITS for v, r in VALUES.items()]
+
+def calculate_thumper(age, height, weight):
+    return age + height + weight
+
+# --- Network Server ---
+class TriggeredServer:
+    def __init__(self, port, ai_count):
+        self.port = port
+        self.ai_count = ai_count
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
+        self.clients = {}  
+        self.players = []  
+        
+        # FIX: Using RLock (Reentrant Lock) instead of a standard Lock prevents deadlocks 
+        # when a function holding the lock (like evaluate_high_card) calls another 
+        # function that also needs the lock (like broadcast).
+        self.lock = threading.RLock() 
+        self.trigger_calls = [] 
+        
+    def start(self):
+        self.server_socket.bind(('0.0.0.0', self.port))
+        self.server_socket.listen(8)
+        print(f"Server started on port {self.port}. Waiting for players...")
+        
+        threading.Thread(target=self.accept_clients, daemon=True).start()
+        
+        input("Press ENTER to start the game when all human players have joined...\n")
+        self.start_game()
+
+    def accept_clients(self):
+        while True:
+            conn, addr = self.server_socket.accept()
+            threading.Thread(target=self.handle_client, args=(conn,), daemon=True).start()
+
+    def handle_client(self, conn):
+        try:
+            data = conn.recv(1024).decode()
+            if data:
+                player_info = json.loads(data)
+                player_info['conn'] = conn
+                player_info['is_ai'] = False
+                player_info['score'] = 0
+                with self.lock:
+                    self.clients[conn] = player_info
+                    self.players.append(player_info)
+                print(f"Player {player_info['name']} joined! Thumper Power: {player_info['thumper']}")
+                
+            while True:
+                msg = conn.recv(1024).decode()
+                if not msg: break
+                parsed = json.loads(msg)
+                if parsed.get('action') == 'trigger':
+                    with self.lock:
+                        self.trigger_calls.append((time.time(), player_info['name']))
+        except:
+            pass
+        finally:
+            conn.close()
+
+    def broadcast(self, message):
+        msg_str = json.dumps(message)
+        with self.lock:
+            for conn in list(self.clients.keys()):
+                try:
+                    conn.sendall(msg_str.encode())
+                    time.sleep(0.05) 
+                except:
+                    del self.clients[conn]
+
+    def start_game(self):
+        for i in range(self.ai_count):
+            ai_player = {
+                'name': f"AI_Bot_{i+1}",
+                'thumper': random.randint(100, 300),
+                'is_ai': True,
+                'score': 0
+            }
+            self.players.append(ai_player)
+            print(f"Added {ai_player['name']}")
+
+        if len(self.players) < 2:
+            print("Need at least 2 players to start.")
+            sys.exit()
+
+        print("\nDetermining First Dealer based on Thumper Power...")
+        max_thumper = max(p['thumper'] for p in self.players)
+        tied_players = [p for p in self.players if p['thumper'] == max_thumper]
+        
+        if len(tied_players) > 1:
+            print("Tie detected! Simulating Rock-Paper-Scissors...")
+            time.sleep(1)
+            first_dealer = random.choice(tied_players)
+            print(f"{first_dealer['name']} won the RPS tie-breaker!")
+        else:
+            first_dealer = tied_players[0]
+            
+        print(f"First Dealer is {first_dealer['name']}!")
+        
+        self.game_loop(first_dealer)
+
+    def evaluate_high_card(self, round_cards, dealer):
+        max_rank = max(c['rank'] for c in round_cards.values())
+        high_players = [name for name, c in round_cards.items() if c['rank'] == max_rank]
+        
+        if len(high_players) > 1:
+            self.broadcast({'msg': f"Tie for high card! Dealer {dealer['name']} wins."})
+            return dealer
+        else:
+            winner_name = high_players[0]
+            self.broadcast({'msg': f"{winner_name} has the high card!"})
+            return next(p for p in self.players if p['name'] == winner_name)
+
+    def game_loop(self, first_dealer):
+        deck = create_deck()
+        random.shuffle(deck)
+        
+        dealer_idx = self.players.index(first_dealer)
+        original_dealer = first_dealer['name']
+        
+        while len(deck) >= len(self.players) + 1:
+            dealer = self.players[dealer_idx]
+            self.broadcast({'msg': f"\n--- NEW ROUND --- Dealer: {dealer['name']}"})
+            time.sleep(1)
+            
+            round_cards = {}
+            for p in self.players:
+                round_cards[p['name']] = deck.pop()
+            bullseye = deck.pop()
+            
+            self.broadcast({'msg': f"Cards dealt face down. Bullseye is: {bullseye['value']} of {bullseye['suit']}"})
+            time.sleep(2)
+            
+            with self.lock:
+                self.trigger_calls.clear()
+                
+            self.broadcast({'msg': f"{dealer['name']} shouts: 'CLICK CLICK'! (Turn over cards!)"})
+            
+            cards_display = "Cards revealed: " + ", ".join([f"{name}: {c['value']} of {c['suit']}" for name, c in round_cards.items()])
+            self.broadcast({'msg': cards_display})
+            
+            match_exists = any(c['value'] == bullseye['value'] for c in round_cards.values())
+            
+            pot = len(self.players) + 1
+            winner = None
+
+            if match_exists:
+                for p in self.players:
+                    if p['is_ai']:
+                        reaction = random.uniform(0.5, 2.8)
+                        threading.Timer(reaction, lambda name=p['name']: self.trigger_calls.append((time.time() + reaction, name))).start()
+
+                time.sleep(TRIGGER_WINDOW)
+                
+                with self.lock:
+                    if self.trigger_calls:
+                        self.trigger_calls.sort(key=lambda x: x[0])
+                        fastest_time = self.trigger_calls[0][0]
+                        ties = [name for t, name in self.trigger_calls if t - fastest_time < 0.1]
+                        
+                        if len(ties) > 1:
+                            self.broadcast({'msg': f"Trigger TIE between {', '.join(ties)}! Dealer {dealer['name']} wins."})
+                            winner = dealer
+                        else:
+                            winner_name = ties[0]
+                            self.broadcast({'msg': f"*** {winner_name} TRIGGERED FIRST! ***"})
+                            winner = next(p for p in self.players if p['name'] == winner_name)
+                    else:
+                        self.broadcast({'msg': "Match missed! Evaluating high cards..."})
+                        winner = self.evaluate_high_card(round_cards, dealer)
+            else:
+                time.sleep(2.0)
+                with self.lock:
+                    if self.trigger_calls:
+                        self.broadcast({'msg': f"False trigger! No match existed. Dealer {dealer['name']} wins."})
+                        winner = dealer
+                    else:
+                        winner = self.evaluate_high_card(round_cards, dealer)
+
+            winner['score'] += pot
+            self.broadcast({'msg': f"{winner['name']} wins the round and collects {pot} cards!\n"})
+            
+            dealer_idx = (dealer_idx + 1) % len(self.players)
+            time.sleep(2)
+
+        self.broadcast({'msg': "\n=== GAME OVER! Not enough cards left. ==="})
+        remaining = len(deck)
+        first_dealer_obj = next(p for p in self.players if p['name'] == original_dealer)
+        first_dealer_obj['score'] += remaining
+        self.broadcast({'msg': f"First dealer {original_dealer} gets the remaining {remaining} cards."})
+        
+        self.players.sort(key=lambda x: x['score'], reverse=True)
+        standings = "\nFINAL SCORES:\n" + "\n".join([f"{p['name']}: {p['score']} cards" for p in self.players])
+        self.broadcast({'msg': standings})
+        sys.exit()
+
+# --- Network Client ---
+class TriggeredClient:
+    def __init__(self, host, port, name, thumper):
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.host = host
+        self.port = port
+        self.name = name
+        self.thumper = thumper
+
+    def start(self):
+        self.client_socket.connect((self.host, self.port))
+        info = json.dumps({'name': self.name, 'thumper': self.thumper})
+        self.client_socket.sendall(info.encode())
+        
+        threading.Thread(target=self.receive_messages, daemon=True).start()
+        
+        while True:
+            cmd = input()
+            if cmd.lower() == 't':
+                msg = json.dumps({'action': 'trigger'})
+                self.client_socket.sendall(msg.encode())
+
+    def receive_messages(self):
+        while True:
+            try:
+                data = self.client_socket.recv(2048).decode()
+                if not data: break
+                
+                try:
+                    msg = json.loads(data)
+                    if 'msg' in msg:
+                        print(msg['msg'])
+                except json.JSONDecodeError:
+                    parts = data.replace('}{', '}split{').split('split')
+                    for p in parts:
+                        try:
+                            msg = json.loads(p)
+                            if 'msg' in msg: print(msg['msg'])
+                        except: pass
+            except:
+                print("Disconnected from server.")
+                break
+
+# --- Main Entry Point ---
+if __name__ == "__main__":
+    print("Welcome to TRIGGERED!")
+    mode = input("Start as (S)erver/Host or (C)lient? ").strip().lower()
+    
+    name = input("Enter your name: ")
+    age = float(input("Enter your age: "))
+    height = float(input("Enter your height (feet): "))
+    weight = float(input("Enter your weight (kg): "))
+    thumper = calculate_thumper(age, height, weight)
+    print(f"Your Thumper Power is: {thumper}\n")
+
+    if mode == 's':
+        ai_count = int(input("How many AI players? (1-7): "))
+        port = int(input("Port to host on (e.g., 5555): "))
+        
+        server = TriggeredServer(port, ai_count)
+        threading.Thread(target=server.start, daemon=True).start()
+        
+        time.sleep(1) 
+        
+        client = TriggeredClient('127.0.0.1', port, name, thumper)
+        client.start()
+        
+    elif mode == 'c':
+        host = input("Enter host IP address: ")
+        port = int(input("Enter host port: "))
+        client = TriggeredClient(host, port, name, thumper)
+        client.start()
+
+```
+
+Run this version, and the game loop will evaluate high cards and flow seamlessly to the next round without freezing. Would you like to try running this to confirm it resolves the hang, or is there another feature you want to build in next?

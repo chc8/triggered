@@ -1,0 +1,1566 @@
+Prompt:
+Address the following:
+- When there is a quickdraw round, on the graphical side show two colt .45 pistols on the graphical side, one on each side of the bullseye card.  This will show the players it is a special quickdraw round.
+- When the moonshine bonus game happens, the names of the leaders and zero point players should be drawn on a sign on the graphical side during the delay waiting for the moonshine jug to appear.
+- After the moonshine jug is shot, the cork should pop off the top of the jug and fly into the air.
+
+Response:
+Here is the complete, updated code.
+
+### Changes Made:
+
+1. **Quickdraw Pistols:** Added a procedural vector graphic for the Colt .45. When the game enters a tie-breaker round, two crossed/flanking pistols appear on the table beside the bullseye card.
+2. **Moonshine Waiting Sign:** Instead of a generic text banner, there is now a dedicated graphical wooden sign that drops down *during the delay* before the jug is thrown. It clearly lists the zero-point "Hunters" and the "Leaders" who are risking their bounties.
+3. **Popping Cork Physics:** The moonshine jug's cork is now an independent element with basic gravity physics. The moment a player shoots the jug, the cork flies off the top in a random arc.
+
+```python
+import socket
+import threading
+import json
+import time
+import random
+import sys
+import os
+import queue
+import textwrap
+import math
+import pygame
+
+# --- Game Constants and Logic ---
+SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+VALUES = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14}
+TRIGGER_WINDOW = 5.0  
+
+AI_NAMES_POOL = ['Mecha-Wyatt', 'Cyber-Doc', 'Holo-Jesse', 'Robo-Calamity', 'Synth-Billy', 'Auto-Annie', 'Bot-Cassidy', 'Gear-Wayne']
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def create_deck():
+    return [{'suit': s, 'value': v, 'rank': r} for s in SUITS for v, r in VALUES.items()]
+
+def calculate_thumper(age, height, weight_kg):
+    return round(age + height + weight_kg, 1)
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+# --- Network Server ---
+class TriggeredServer:
+    def __init__(self, port, ai_count):
+        self.port = port
+        self.ai_count = ai_count
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
+        self.clients = {}  
+        self.players = []  
+        self.lock = threading.RLock() 
+        self.trigger_calls = [] 
+        self.game_active = False
+        self.ai_added = False
+        self.round_num = 1
+        self.trigger_phase = False 
+        self.is_paused = False
+        
+        self.moonshine_active = False
+        self.moonshine_risk_players = []
+        self.moonshine_zero_players = []
+        
+    def start(self):
+        self.server_socket.bind(('0.0.0.0', self.port))
+        self.server_socket.listen(8)
+        threading.Thread(target=self.accept_clients, daemon=True).start()
+
+    def accept_clients(self):
+        while True:
+            conn, addr = self.server_socket.accept()
+            threading.Thread(target=self.handle_client, args=(conn,), daemon=True).start()
+
+    def safe_sleep(self, duration):
+        waited = 0
+        while waited < duration:
+            time.sleep(0.1)
+            if not self.is_paused:
+                waited += 0.1
+
+    def register_trigger(self, player_name):
+        with self.lock:
+            if self.trigger_phase:
+                if not any(name == player_name for t, name in self.trigger_calls):
+                    self.trigger_calls.append((time.time(), player_name))
+                    if self.moonshine_active:
+                        self.broadcast({'msg': f"  [!] *BANG* {player_name} shot at the jug!"})
+                        player = next((p for p in self.players if p['name'] == player_name), None)
+                        if player and player not in self.moonshine_risk_players and player not in self.moonshine_zero_players:
+                            if player['score'] > 0:
+                                self.moonshine_risk_players.append(player)
+                                self.broadcast({'msg': f"  [!] {player_name} joins the fun and risks their {player['score']} cards!"})
+                    else:
+                        self.broadcast({'msg': f"  [!] *BANG* {player_name} reached for their iron!"})
+            elif self.game_active:
+                self.broadcast({'msg': f"  [-] *Click* {player_name} drew too early! (Wait for the cue!)"})
+
+    def handle_client(self, conn):
+        try:
+            data = conn.recv(1024).decode()
+            if data:
+                player_info = json.loads(data)
+                player_info['conn'] = conn
+                player_info['is_ai'] = False
+                player_info['score'] = 0
+                with self.lock:
+                    self.clients[conn] = player_info
+                    self.players.append(player_info)
+                self.broadcast({'msg': f"Gunslinger {player_info['name']} moseyed into the saloon!"})
+                
+            buffer = ""
+            while True:
+                data = conn.recv(1024).decode()
+                if not data: break
+                buffer += data
+                
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    line = line.strip()
+                    if not line: continue
+                    
+                    try:
+                        parsed = json.loads(line)
+                        action = parsed.get('action')
+                        
+                        if action == 'trigger' and self.game_active and not self.is_paused:
+                            self.register_trigger(player_info['name'])
+                        elif action == 'toggle_pause':
+                            self.is_paused = not self.is_paused
+                            status = "PAUSED" if self.is_paused else "RESUMED"
+                            self.broadcast({'msg': f"\n--- GAME {status} ---"})
+                        elif action == 'start' and not self.game_active:
+                            threading.Thread(target=self.start_game_logic, daemon=True).start()
+                        elif action == 'restart' and not self.game_active:
+                            threading.Thread(target=self.start_game_logic, daemon=True).start()
+                        elif action == 'exit':
+                            self.broadcast({'action': 'quit', 'msg': "\nServer is packin' up. Happy trails, partners!"})
+                            time.sleep(1)
+                            os._exit(0) 
+                    except Exception:
+                        pass 
+        except:
+            pass
+        finally:
+            if conn in self.clients:
+                del self.clients[conn]
+            conn.close()
+
+    def broadcast(self, message):
+        msg_str = json.dumps(message) + "\n"
+        with self.lock:
+            for conn in list(self.clients.keys()):
+                try:
+                    conn.sendall(msg_str.encode())
+                    time.sleep(0.01) 
+                except:
+                    pass
+
+    def start_game_logic(self):
+        with self.lock:
+            if self.game_active: return
+            
+            if not self.ai_added:
+                available_ai_names = random.sample(AI_NAMES_POOL, min(self.ai_count, len(AI_NAMES_POOL)))
+                for i in range(self.ai_count):
+                    ai_player = {
+                        'name': available_ai_names[i] if i < len(available_ai_names) else f"Bot-{i}",
+                        'thumper': round(random.uniform(90.0, 220.0), 1), 
+                        'is_ai': True,
+                        'score': 0
+                    }
+                    self.players.append(ai_player)
+                self.ai_added = True
+
+            if len(self.players) < 2:
+                self.broadcast({'msg': "Hold yer horses! We need at least 2 gunslingers to start."})
+                return
+                
+            self.game_active = True
+            self.round_num = 1
+            for p in self.players:
+                p['score'] = 0
+
+        self.broadcast({'msg': "\n" + "="*40 + "\nDRAW YOUR WEAPONS! THE GAME BEGINS!\n" + "="*40})
+        
+        thumper_display = "\n--- THUMPER POWERS ---\n"
+        for p in self.players:
+            thumper_display += f"  {p['name']}: {p['thumper']}\n"
+        thumper_display += "----------------------"
+        self.broadcast({'msg': thumper_display})
+        self.safe_sleep(4)
+
+        self.broadcast({'msg': "\nJudgin' the First Dealer based on Thumper Power..."})
+        max_thumper = max(p['thumper'] for p in self.players)
+        tied_players = [p for p in self.players if p['thumper'] == max_thumper]
+        
+        if len(tied_players) > 1:
+            self.broadcast({'msg': "We got ourselves a Mexican standoff! Resolvin' the tie..."})
+            self.safe_sleep(2)
+            first_dealer = random.choice(tied_players)
+        else:
+            first_dealer = tied_players[0]
+            
+        self.broadcast({'msg': f"The First Dealer is {first_dealer['name']}!"})
+        self.safe_sleep(2)
+        
+        self.game_loop(first_dealer)
+
+    def get_high_card_winners(self, round_cards):
+        max_rank = max(c['rank'] for c in round_cards.values())
+        return [name for name, c in round_cards.items() if c['rank'] == max_rank]
+
+    def resolve_by_thumper(self, tied_objs, dealer):
+        max_thumper = max(p['thumper'] for p in tied_objs)
+        thump_winners = [p for p in tied_objs if p['thumper'] == max_thumper]
+        if len(thump_winners) > 1:
+            self.broadcast({'msg': f"Thumper power is tied! Dealer {dealer['name']} wins ties. House rules."})
+            return dealer, 0
+        else:
+            winner = thump_winners[0]
+            self.broadcast({'msg': f"{winner['name']} wins the tiebreaker with superior Thumper Power ({winner['thumper']})!"})
+            return winner, 0
+
+    def play_quickdraw_round(self, tied_player_names, dealer, deck):
+        tied_objs = [p for p in self.players if p['name'] in tied_player_names]
+        tie_pot = len(tied_objs) + 1
+        
+        if len(deck) < tie_pot + 1:
+            self.broadcast({'msg': "Deck is too low for a tiebreaker! Resolving by Thumper..."})
+            return self.resolve_by_thumper(tied_objs, dealer)
+
+        self.broadcast({'msg': f"\n--- SPECIAL QUICKDRAW ROUND --- Dealer is shufflin' tiebreaker cards..."})
+        self.safe_sleep(1.5)
+        
+        round_cards = {}
+        for p in tied_objs:
+            round_cards[p['name']] = deck.pop()
+        bullseye = deck.pop()
+        
+        self.broadcast({'msg': f"Cards dealt face down in the dirt. The Tiebreaker Bullseye is:"})
+        self.broadcast({'msg': f"\n      >>> {bullseye['value']} of {bullseye['suit']} <<<\n"})
+        
+        self.safe_sleep(2)
+        
+        with self.lock:
+            self.trigger_calls.clear()
+            self.trigger_phase = True
+            
+        self.broadcast({'msg': f"{dealer['name']} draws and yells: 'CLICK CLICK'! (Turn 'em over!)"})
+        
+        cards_display = "Tiebreaker Cards revealed:\n" + "\n".join([f"  - {name}: {c['value']} of {c['suit']}" for name, c in round_cards.items()])
+        self.broadcast({'msg': cards_display})
+        
+        match_exists = any(c['value'] == bullseye['value'] for c in round_cards.values())
+
+        if match_exists:
+            for p in tied_objs:
+                if p['is_ai']:
+                    reaction = random.uniform(0.6, 4.0)
+                    threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
+
+            self.safe_sleep(TRIGGER_WINDOW)
+            
+            with self.lock:
+                self.trigger_phase = False 
+                valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
+                if valid_calls:
+                    valid_calls.sort(key=lambda x: x[0])
+                    fastest_time = valid_calls[0][0]
+                    ties = [name for t, name in valid_calls if t - fastest_time < 0.1]
+                    
+                    if len(ties) > 1:
+                        self.broadcast({'msg': f"Another tie! Resolving by Thumper Power..."})
+                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in ties], dealer)
+                        return w, tie_pot
+                    else:
+                        winner_name = ties[0]
+                        self.broadcast({'msg': f"*** {winner_name} WON THE TIEBREAKER! ***"})
+                        w = next(p for p in tied_objs if p['name'] == winner_name)
+                        return w, tie_pot
+                else:
+                    self.broadcast({'msg': "Nobody pulled the trigger! Checking high card..."})
+                    high_players = self.get_high_card_winners(round_cards)
+                    if len(high_players) > 1:
+                        self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
+                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
+                        return w, tie_pot
+                    else:
+                        winner_name = high_players[0]
+                        self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
+                        w = next(p for p in tied_objs if p['name'] == winner_name)
+                        return w, tie_pot
+        else:
+            self.safe_sleep(3.0) 
+            with self.lock:
+                self.trigger_phase = False
+                valid_calls = [c for c in self.trigger_calls if c[1] in tied_player_names]
+                if valid_calls:
+                    valid_calls.sort(key=lambda x: x[0])
+                    first_trigger_name = valid_calls[0][1]
+                    self.broadcast({'msg': f"Misfire! {first_trigger_name} shot at a ghost in the tiebreaker!"})
+                    
+                    remaining_tied = [p for p in tied_objs if p['name'] != first_trigger_name]
+                    if not remaining_tied:
+                        self.broadcast({'msg': f"Everyone misfired! Dealer {dealer['name']} takes the pot."})
+                        return dealer, tie_pot
+                        
+                    remaining_cards = {n:c for n,c in round_cards.items() if n != first_trigger_name}
+                    high_players = self.get_high_card_winners(remaining_cards)
+                    if len(high_players) > 1:
+                        self.broadcast({'msg': f"Tie for the high card among survivors! Resolving by Thumper..."})
+                        w, _ = self.resolve_by_thumper([p for p in remaining_tied if p['name'] in high_players], dealer)
+                        return w, tie_pot
+                    else:
+                        winner_name = high_players[0]
+                        self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
+                        w = next(p for p in remaining_tied if p['name'] == winner_name)
+                        return w, tie_pot
+                else:
+                    high_players = self.get_high_card_winners(round_cards)
+                    if len(high_players) > 1:
+                        self.broadcast({'msg': f"Tie for the high card! Resolving by Thumper Power..."})
+                        w, _ = self.resolve_by_thumper([p for p in tied_objs if p['name'] in high_players], dealer)
+                        return w, tie_pot
+                    else:
+                        winner_name = high_players[0]
+                        self.broadcast({'msg': f"{winner_name} holds the highest tiebreaker card!"})
+                        w = next(p for p in tied_objs if p['name'] == winner_name)
+                        return w, tie_pot
+
+    def moonshine_shootout(self, high_players, zero_players):
+        self.moonshine_active = True
+        self.moonshine_risk_players = high_players.copy()
+        self.moonshine_zero_players = zero_players.copy()
+        
+        self.broadcast({'msg': "\n" + "="*40})
+        self.broadcast({'msg': "!!! MOONSHINE SHOOTOUT BONUS ROUND !!!"})
+        self.broadcast({'msg': "Zero-point cowboys get one last chance to steal the leader's bounty!"})
+        
+        risk_names = [p['name'] for p in high_players]
+        zero_names = [p['name'] for p in zero_players]
+        
+        self.broadcast({'msg': f"Leaders (At Risk): {', '.join(risk_names)}"})
+        self.broadcast({'msg': f"Zero-Pointers (Hunters): {', '.join(zero_names)}"})
+        
+        self.broadcast({'msg': f"MOONSHINE_BANNER|{','.join(zero_names)} vs {','.join(risk_names)}"})
+        self.broadcast({'msg': "Leaders and Zero-pointers: GET READY TO SHOOT THE JUG!"})
+        
+        self.safe_sleep(random.uniform(3.5, 6.0))
+        
+        with self.lock:
+            self.trigger_calls.clear()
+            self.trigger_phase = True
+            
+        self.broadcast({'msg': "\n >>> *JUG OF MOONSHINE THROWN* CLICK CLICK! (Shoot now!) <<< \n"})
+        
+        participants = high_players + zero_players
+        for p in participants:
+            if p['is_ai']:
+                reaction = random.uniform(0.5, 3.5)
+                threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
+                
+        self.safe_sleep(TRIGGER_WINDOW)
+        
+        with self.lock:
+            self.trigger_phase = False
+            self.moonshine_active = False 
+            
+            zero_names = [p['name'] for p in self.moonshine_zero_players]
+            risk_names = [p['name'] for p in self.moonshine_risk_players]
+            
+            zero_calls = [c for c in self.trigger_calls if c[1] in zero_names]
+            risk_calls = [c for c in self.trigger_calls if c[1] in risk_names]
+            
+            if not zero_calls:
+                self.broadcast({'msg': "No zero-point player hit the jug! The leaders keep their stash."})
+                return
+                
+            zero_calls.sort(key=lambda x: x[0])
+            fastest_zero_time, fastest_zero_name = zero_calls[0]
+            
+            self.broadcast({'msg': f"*** {fastest_zero_name} shot the jug! ***"})
+            total_stolen = 0
+            
+            for h in self.moonshine_risk_players:
+                h_name = h['name']
+                h_call = next((c for c in risk_calls if c[1] == h_name), None)
+                if not h_call or h_call[0] > fastest_zero_time:
+                    stolen = h['score']
+                    h['score'] = 0
+                    total_stolen += stolen
+                    self.broadcast({'msg': f"  -> {h_name} was too slow! They lost {stolen} cards!"})
+                else:
+                    self.broadcast({'msg': f"  -> {h_name} fired fast and defended their stash!"})
+                    
+            if total_stolen > 0:
+                share = total_stolen // len(self.moonshine_zero_players)
+                remainder = total_stolen % len(self.moonshine_zero_players)
+                for i, z in enumerate(self.moonshine_zero_players):
+                    z['score'] += share + (1 if i < remainder else 0)
+                self.broadcast({'msg': f"The zero-point players divide up the {total_stolen} stolen cards!"})
+            else:
+                self.broadcast({'msg': "The leaders survived the ambush!"})
+
+    def game_loop(self, first_dealer):
+        deck = create_deck()
+        random.shuffle(deck)
+        
+        dealer_idx = self.players.index(first_dealer)
+        original_dealer = first_dealer['name']
+        
+        while len(deck) >= len(self.players) + 1:
+            dealer = self.players[dealer_idx]
+            self.broadcast({'msg': f"\n--- ROUND {self.round_num} --- Dealer {dealer['name']} is shufflin'..."})
+            self.safe_sleep(1.5)
+            
+            round_cards = {}
+            for p in self.players:
+                round_cards[p['name']] = deck.pop()
+            bullseye = deck.pop()
+            
+            self.broadcast({'msg': f"Cards dealt face down in the dirt. The Bullseye is:"})
+            self.broadcast({'msg': f"\n      >>> {bullseye['value']} of {bullseye['suit']} <<<\n"})
+            
+            self.safe_sleep(2)
+            
+            with self.lock:
+                self.trigger_calls.clear()
+                self.trigger_phase = True
+                
+            self.broadcast({'msg': f"{dealer['name']} draws and yells: 'CLICK CLICK'! (Turn 'em over!)"})
+            
+            cards_display = "Cards revealed on the table:\n" + "\n".join([f"  - {name}: {c['value']} of {c['suit']}" for name, c in round_cards.items()])
+            self.broadcast({'msg': cards_display})
+            
+            match_exists = any(c['value'] == bullseye['value'] for c in round_cards.values())
+            pot = len(self.players) + 1
+            winner = None
+
+            if match_exists:
+                for p in self.players:
+                    if p['is_ai']:
+                        reaction = random.uniform(0.8, 4.8)
+                        threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
+
+                self.safe_sleep(TRIGGER_WINDOW)
+                
+                with self.lock:
+                    self.trigger_phase = False 
+                    
+                    if self.trigger_calls:
+                        self.trigger_calls.sort(key=lambda x: x[0])
+                        fastest_time = self.trigger_calls[0][0]
+                        ties = [name for t, name in self.trigger_calls if t - fastest_time < 0.1]
+                        
+                        if len(ties) > 1:
+                            self.broadcast({'msg': f"Trigger TIE between {', '.join(ties)}! Initiating Quickdraw Round!"})
+                            winner, extra_pot = self.play_quickdraw_round(ties, dealer, deck)
+                            pot += extra_pot
+                        else:
+                            winner_name = ties[0]
+                            self.broadcast({'msg': f"*** {winner_name} WAS THE FASTEST GUN! ***"})
+                            winner = next(p for p in self.players if p['name'] == winner_name)
+                    else:
+                        self.broadcast({'msg': "Nobody pulled the trigger! Let's see who's holdin' the high card..."})
+                        high_players = self.get_high_card_winners(round_cards)
+                        if len(high_players) > 1:
+                            self.broadcast({'msg': f"Tie for the high card between {', '.join(high_players)}! Initiating Quickdraw Round!"})
+                            winner, extra_pot = self.play_quickdraw_round(high_players, dealer, deck)
+                            pot += extra_pot
+                        else:
+                            winner_name = high_players[0]
+                            self.broadcast({'msg': f"{winner_name} holds the highest card!"})
+                            winner = next(p for p in self.players if p['name'] == winner_name)
+            else:
+                self.safe_sleep(3.0) 
+                
+                with self.lock:
+                    self.trigger_phase = False
+                    if self.trigger_calls:
+                        self.trigger_calls.sort(key=lambda x: x[0])
+                        first_trigger_name = self.trigger_calls[0][1]
+                        
+                        if first_trigger_name == dealer['name']:
+                            self.broadcast({'msg': f"Misfire! The Dealer ({dealer['name']}) drew on a ghost!"})
+                            self.broadcast({'msg': f"The dealer loses! {pot} cards are scattered randomly to the other players."})
+                            other_players = [p for p in self.players if p['name'] != dealer['name']]
+                            if other_players:
+                                for _ in range(pot):
+                                    random.choice(other_players)['score'] += 1
+                            winner = None 
+                        else:
+                            self.broadcast({'msg': f"Misfire! {first_trigger_name} got trigger-happy with no match."})
+                            self.broadcast({'msg': f"Dealer {dealer['name']} takes the pot."})
+                            winner = dealer
+                    else:
+                        high_players = self.get_high_card_winners(round_cards)
+                        if len(high_players) > 1:
+                            self.broadcast({'msg': f"Tie for the high card between {', '.join(high_players)}! Initiating Quickdraw Round!"})
+                            winner, extra_pot = self.play_quickdraw_round(high_players, dealer, deck)
+                            pot += extra_pot
+                        else:
+                            winner_name = high_players[0]
+                            self.broadcast({'msg': f"{winner_name} holds the highest card!"})
+                            winner = next(p for p in self.players if p['name'] == winner_name)
+
+            if winner:
+                winner['score'] += pot
+                self.broadcast({'msg': f"{winner['name']} wins the round and collects {pot} cards!\n"})
+            else:
+                self.broadcast({'msg': "The round ends in chaos! Cards distributed.\n"})
+            
+            self.round_num += 1
+            dealer_idx = (dealer_idx + 1) % len(self.players)
+            self.safe_sleep(2.5)
+
+        self.broadcast({'msg': "\n=== GAME OVER! The deck ran dry. ==="})
+        remaining = len(deck)
+        first_dealer_obj = next(p for p in self.players if p['name'] == original_dealer)
+        first_dealer_obj['score'] += remaining
+        self.broadcast({'msg': f"First dealer {original_dealer} pockets the remaining {remaining} cards."})
+        self.safe_sleep(2.0)
+        
+        high_score = max(p['score'] for p in self.players)
+        high_players = [p for p in self.players if p['score'] == high_score]
+        zero_players = [p for p in self.players if p['score'] == 0]
+        
+        if high_score > 0 and len(zero_players) > 0:
+            self.moonshine_shootout(high_players, zero_players)
+            self.safe_sleep(3.0)
+        
+        self.players.sort(key=lambda x: x['score'], reverse=True)
+        standings = "\nFINAL BOUNTIES (Scores):\n" + "\n".join([f"  {p['name']}: {p['score']} cards" for p in self.players])
+        self.broadcast({'msg': standings})
+        
+        self.game_active = False
+        self.broadcast({'msg': "\nHost can press 'R' to play a new game, or close the window to exit."})
+
+
+# --- SVGA+ Palette ---
+SVGA = {
+    'BG_GREEN': (24, 66, 38),      
+    'BLACK': (20, 20, 20),
+    'WHITE': (245, 245, 245),
+    'CARD_SHADOW': (0, 0, 0, 100), 
+    'GOLD': (255, 215, 0),
+    'TEXT_LIGHT': (220, 220, 220),
+    'TEXT_BLUE': (100, 200, 255),
+    'TEXT_RED': (255, 100, 100),
+    'TEXT_GREEN': (100, 255, 100),
+    'SUIT_RED': (220, 40, 40),
+    'SUIT_BLACK': (30, 30, 30),
+    'UI_PANEL': (40, 40, 40, 200),
+    'POSTER': (222, 199, 155),
+    'POSTER_DARK': (160, 130, 90),
+    'INK': (45, 35, 25),
+    'WOOD_BASE': (139, 90, 43),
+    'WOOD_DARK': (80, 50, 20),
+    'WOOD_LINE': (101, 67, 33)
+}
+
+# --- Visual Objects ---
+class FloatingMessage:
+    def __init__(self, text, color, start_y):
+        self.text = text
+        self.color = color
+        self.y = start_y
+        self.target_y = start_y
+
+    def update(self):
+        self.y = lerp(self.y, self.target_y, 0.15)
+
+class AnimatedCard:
+    def __init__(self, start_x, start_y, value=None, suit=None, label=""):
+        self.x = start_x
+        self.y = start_y
+        self.target_x = start_x
+        self.target_y = start_y
+        self.draw_x = start_x
+        self.draw_y = start_y
+        
+        self.value = value
+        self.suit = suit
+        self.label = label
+        self.revealed = False
+        
+        self.bullet_holes = []  
+        self.has_tombstone = False
+        self.is_winner = False
+        self.shake_timer = 0
+        self.flash_alpha = 0
+
+    def update(self):
+        self.x = lerp(self.x, self.target_x, 0.1)
+        self.y = lerp(self.y, self.target_y, 0.1)
+        
+        self.draw_x = self.x
+        self.draw_y = self.y
+        
+        if self.shake_timer > 0:
+            self.draw_x += random.randint(-5, 5)
+            self.draw_y += random.randint(-5, 5)
+            self.shake_timer -= 1
+            
+        if self.flash_alpha > 0:
+            self.flash_alpha = max(0, self.flash_alpha - 8)
+
+
+# --- Main Application ---
+class TriggeredGameApp:
+    def __init__(self):
+        pygame.init()
+        pygame.mixer.init()
+        
+        self.sound_enabled = True
+        self.debug_logging = False
+        self.debug_filename = ""
+        
+        try:
+            pygame.mixer.music.load('western_theme.mp3')
+            pygame.mixer.music.set_volume(0.3)
+            pygame.mixer.music.play(-1) 
+        except Exception:
+            pass
+            
+        self.gunshot_sound = None
+        try:
+            if os.path.exists('gunshot.wav'):
+                self.gunshot_sound = pygame.mixer.Sound('gunshot.wav')
+            elif os.path.exists('gunshot.mp3'):
+                self.gunshot_sound = pygame.mixer.Sound('gunshot.mp3')
+                
+            if self.gunshot_sound:
+                self.gunshot_sound.set_volume(0.8)
+        except Exception:
+            pass
+            
+        self.res = (1280, 720)
+        self.screen = pygame.display.set_mode(self.res)
+        pygame.display.set_caption("TRIGGERED - High Res Edition")
+        
+        try:
+            self.font = pygame.font.SysFont('trebuchetms', 20, bold=True)
+            self.small_font = pygame.font.SysFont('trebuchetms', 16, bold=True)
+            self.title_font = pygame.font.SysFont('impact', 72)
+            self.card_font = pygame.font.SysFont('arial', 36, bold=True)
+            self.ledger_font = pygame.font.SysFont('courier', 24, bold=True)
+        except:
+            self.font = pygame.font.Font(None, 24)
+            self.small_font = pygame.font.Font(None, 20)
+            self.title_font = pygame.font.Font(None, 72)
+            self.card_font = pygame.font.Font(None, 40)
+            self.ledger_font = pygame.font.Font(None, 30)
+        
+        self.left_panel_w = 600
+        char_width = self.font.size("A")[0]
+        self.max_chars = (self.left_panel_w - 40) // char_width 
+        
+        self.running = True
+        self.state = 'SETUP'
+        self.blink_timer = 0
+        self.door_progress = 0.0
+        self.is_paused = False
+        
+        self.setup_step = 'MODE'
+        self.input_text = ""
+        self.setup_error = ""
+        
+        self.is_host = False
+        self.name = ""
+        self.age = 0.0
+        self.height = 0.0
+        self.weight_lbs = 0.0 
+        self.thumper = 0.0
+        self.ai_count = 0
+        self.host_ip = "127.0.0.1"
+        self.port = 5555
+        
+        self.server = None
+        self.client_socket = None
+        self.msg_queue = queue.Queue()
+        
+        self.log_messages = []
+        self.full_message_history = [] 
+        self.scroll_offset = 0
+        self.bullseye_anim_card = None
+        self.player_cards = {}
+        self.cards_dealt = False
+        self.is_quickdraw = False
+        
+        # Moonshine round graphics state
+        self.moonshine_waiting = False
+        self.moonshine_hunters = []
+        self.moonshine_leaders = []
+        
+        self.show_moonshine_jug = False
+        self.jug_bullet_holes = []
+        self.jug_flash_alpha = 0
+        self.jug_shot = False
+        self.cork_x = 0
+        self.cork_y = 0
+        self.cork_dx = 0
+        self.cork_dy = 0
+        
+        self.game_over = False
+        self.overall_winner = ""
+
+        self.setup_sequence = ['MODE', 'NAME', 'AGE', 'HEIGHT', 'WEIGHT', 'NETWORK', 'PORT']
+
+    def log_game_text(self, text):
+        self.full_message_history.append(text)
+        if self.debug_logging and self.debug_filename:
+            try:
+                with open(self.debug_filename, 'a') as f:
+                    f.write(text + "\n")
+            except Exception:
+                pass
+
+    def handle_setup_input(self, event):
+        if event.key == pygame.K_BACKSPACE:
+            self.input_text = self.input_text[:-1]
+            self.setup_error = ""
+        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            val = self.input_text.strip()
+            self.input_text = ""
+            self.setup_error = ""
+            
+            try:
+                if self.setup_step == 'MODE':
+                    if val.lower() == 's':
+                        self.is_host = True
+                        self.setup_step = 'NAME'
+                    elif val.lower() == 'c':
+                        self.is_host = False
+                        self.setup_step = 'NAME'
+                    else:
+                        self.setup_error = "Type 'S' for Host or 'C' for Client."
+                
+                elif self.setup_step == 'NAME':
+                    if val:
+                        self.name = val
+                        self.setup_step = 'AGE'
+                    else:
+                        self.setup_error = "Name cannot be empty."
+                        
+                elif self.setup_step == 'AGE':
+                    self.age = float(val)
+                    self.setup_step = 'HEIGHT'
+                    
+                elif self.setup_step == 'HEIGHT':
+                    self.height = float(val)
+                    self.setup_step = 'WEIGHT'
+                    
+                elif self.setup_step == 'WEIGHT':
+                    self.weight_lbs = float(val)
+                    weight_kg = self.weight_lbs * 0.453592
+                    self.thumper = calculate_thumper(self.age, self.height, weight_kg)
+                    self.setup_step = 'NETWORK'
+                    
+                elif self.setup_step == 'NETWORK':
+                    if self.is_host:
+                        self.ai_count = int(val)
+                        if 0 <= self.ai_count <= 7:
+                            self.setup_step = 'PORT'
+                            self.input_text = "5555" 
+                        else:
+                            self.setup_error = "AI count must be 0-7."
+                    else:
+                        if val:
+                            self.host_ip = val
+                            self.setup_step = 'PORT'
+                            self.input_text = "5555" 
+                        else:
+                            self.setup_error = "IP cannot be empty."
+                        
+                elif self.setup_step == 'PORT':
+                    self.port = int(val)
+                    self.finalize_setup()
+                    
+            except ValueError:
+                self.setup_error = "Invalid format. Numbers required here."
+        else:
+            if event.unicode.isprintable() and len(self.input_text) < 20:
+                self.input_text += event.unicode
+                self.setup_error = ""
+
+    def finalize_setup(self):
+        pygame.display.set_caption("TRIGGERED - High Res Edition" + (" [HOST]" if self.is_host else ""))
+        
+        if self.is_host:
+            self.server = TriggeredServer(self.port, self.ai_count)
+            self.server.start()
+            time.sleep(0.5)
+            self.host_ip = '127.0.0.1'
+            
+        self.connect_to_server()
+
+    def connect_to_server(self):
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.client_socket.connect((self.host_ip, self.port))
+            info = json.dumps({'name': self.name, 'thumper': self.thumper})
+            self.client_socket.sendall(info.encode())
+            
+            self.state = 'TITLE'
+            
+            self.add_log_message("Welcome to the Saloon!", SVGA['TEXT_LIGHT'])
+            self.log_game_text("Welcome to the Saloon!")
+            
+            if self.is_host:
+                self.add_log_message(f"Server IP: {get_local_ip()} | Port: {self.port}", SVGA['TEXT_BLUE'])
+                self.log_game_text(f"Server IP: {get_local_ip()} | Port: {self.port}")
+                self.add_log_message("You are the Host. Press 'S' to Start.", SVGA['GOLD'])
+                self.log_game_text("You are the Host. Press 'S' to Start.")
+            else:
+                self.add_log_message("Waiting for the Host to start...", SVGA['TEXT_LIGHT'])
+                self.log_game_text("Waiting for the Host to start...")
+                
+            self.add_log_message("Press 'T' to pull the TRIGGER!", SVGA['TEXT_LIGHT'])
+            self.log_game_text("Press 'T' to pull the TRIGGER!")
+            self.add_log_message("Press 'Q' to toggle audio.", SVGA['TEXT_LIGHT'])
+            self.log_game_text("Press 'Q' to toggle audio.")
+            self.add_log_message("Press 'P' to Pause.", SVGA['TEXT_LIGHT'])
+            self.log_game_text("Press 'P' to Pause.")
+            
+            threading.Thread(target=self.receive_messages, daemon=True).start()
+        except ConnectionRefusedError:
+            self.setup_step = 'PORT'
+            self.setup_error = "Connection Failed. Check IP/Port and try again."
+
+    def add_log_message(self, text, color):
+        spacing = 28
+        for msg in self.log_messages:
+            msg.target_y -= spacing
+        
+        new_msg = FloatingMessage(text, color, self.res[1])
+        new_msg.target_y = self.res[1] - 50 
+        self.log_messages.append(new_msg)
+        
+        if len(self.log_messages) > 30:
+            self.log_messages.pop(0)
+
+    def receive_messages(self):
+        buffer = ""
+        while self.running and self.state in ['TITLE', 'DOOR_ANIM', 'GAME']:
+            try:
+                data = self.client_socket.recv(2048).decode()
+                if not data: break
+                buffer += data
+                
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    line = line.strip()
+                    if not line: continue
+                    
+                    try:
+                        msg = json.loads(line)
+                        if 'msg' in msg:
+                            raw_msg = msg['msg']
+                            
+                            if "MOONSHINE_BANNER|" in raw_msg:
+                                parts = raw_msg.split("|")[1].split(" vs ")
+                                self.moonshine_hunters = parts[0].split(",")
+                                self.moonshine_leaders = parts[1].split(",")
+                                self.moonshine_waiting = True
+                                self.show_moonshine_jug = False
+                                self.jug_shot = False
+                                continue 
+                            
+                            self.log_game_text(raw_msg)
+                            
+                            if "GAME PAUSED" in raw_msg:
+                                self.is_paused = True
+                            elif "GAME RESUMED" in raw_msg:
+                                self.is_paused = False
+                                
+                            elif "DRAW YOUR WEAPONS!" in raw_msg:
+                                self.game_over = False
+                                self.overall_winner = ""
+                                self.is_quickdraw = False
+                                
+                            elif "--- ROUND" in raw_msg and "SPECIAL" not in raw_msg:
+                                self.is_quickdraw = False
+                                
+                            elif "--- SPECIAL QUICKDRAW ROUND ---" in raw_msg:
+                                self.is_quickdraw = True
+                                
+                            elif "--- THUMPER POWERS ---" in raw_msg:
+                                self.player_cards.clear()
+                                idx = 0
+                                for m_line in raw_msg.split('\n'):
+                                    if ':' in m_line and not '---' in m_line and not 'THUMPER' in m_line:
+                                        p_name = m_line.split(':')[0].strip()
+                                        if p_name:
+                                            self.player_cards[p_name] = AnimatedCard(self.res[0] + 200, self.res[1] + 200, label=p_name)
+                                            idx += 1
+                                            
+                            elif "is shufflin'" in raw_msg:
+                                self.bullseye_anim_card = None
+                                self.show_moonshine_jug = False
+                                for p_name, card in self.player_cards.items():
+                                    card.revealed = False
+                                    card.bullet_holes.clear()
+                                    card.is_winner = False 
+                                    card.has_tombstone = False
+                                    card.x = self.res[0] + 100 
+                                self.cards_dealt = False
+                                
+                            elif "*JUG OF MOONSHINE THROWN*" in raw_msg:
+                                self.moonshine_waiting = False
+                                self.show_moonshine_jug = True
+                                self.jug_bullet_holes.clear()
+                                self.jug_shot = False
+                                self.cork_x = 0
+                                self.cork_y = 0
+                                self.cork_dx = random.choice([-5, 5])
+                                self.cork_dy = -15
+                                
+                            elif "divide up" in raw_msg or "survived the ambush" in raw_msg:
+                                self.show_moonshine_jug = False
+                                
+                            elif "shot the jug!" in raw_msg:
+                                self.jug_shot = True
+                                
+                            elif any(phrase in raw_msg for phrase in ["*BANG*", "shot at the jug!", "*Click*", "Misfire!"]):
+                                if "Misfire!" in raw_msg:
+                                    for p_name, card in self.player_cards.items():
+                                        if p_name in raw_msg:
+                                            card.has_tombstone = True
+                                            
+                                for p_name, card in self.player_cards.items():
+                                    if p_name in raw_msg and p_name != self.name:
+                                        if self.gunshot_sound and self.sound_enabled:
+                                            self.gunshot_sound.play()
+                                            
+                                        if self.show_moonshine_jug:
+                                            self.jug_bullet_holes.append((random.randint(-40, 40), random.randint(-40, 60)))
+                                            self.jug_flash_alpha = 255
+                                        else:
+                                            card.bullet_holes.append((random.randint(-25, 25), random.randint(-35, 35)))
+                                            card.flash_alpha = 255
+                                        
+                            elif any(phrase in raw_msg for phrase in ["WAS THE FASTEST", "takes the pot", "holds the highest", "wins the round", "WON THE TIEBREAKER"]):
+                                for p_name, card in self.player_cards.items():
+                                    if p_name in raw_msg:
+                                        card.is_winner = True
+                                        card.shake_timer = 40  
+                                        
+                            elif "Cards dealt face down" in raw_msg:
+                                self.cards_dealt = True
+                                start_x = self.left_panel_w + 50
+                                for i, (p_name, card) in enumerate(self.player_cards.items()):
+                                    col = i % 4
+                                    row = i // 4
+                                    card.target_x = start_x + (col * 140)
+                                    card.target_y = 350 + (row * 180)
+                                    
+                            elif ">>>" in raw_msg and "of" in raw_msg and "JUG" not in raw_msg:
+                                parts = raw_msg.replace(">>>", "").replace("<<<", "").strip().split(" of ")
+                                if len(parts) == 2:
+                                    self.bullseye_anim_card = AnimatedCard(self.res[0]//2, -200, parts[0].strip(), parts[1].strip(), "BULLSEYE")
+                                    self.bullseye_anim_card.target_x = self.left_panel_w + (self.res[0] - self.left_panel_w)//2 - 75
+                                    self.bullseye_anim_card.target_y = 100
+                                    self.bullseye_anim_card.revealed = True
+                                    
+                            elif "Cards revealed on the table:" in raw_msg or "Tiebreaker Cards revealed:" in raw_msg:
+                                for m_line in raw_msg.split('\n'):
+                                    if m_line.strip().startswith('- '):
+                                        try:
+                                            p_name_part, card_part = m_line.strip()[2:].split(': ')
+                                            val, suit = card_part.split(' of ')
+                                            if p_name_part.strip() in self.player_cards:
+                                                pc = self.player_cards[p_name_part.strip()]
+                                                pc.value = val.strip()
+                                                pc.suit = suit.strip()
+                                                pc.revealed = True
+                                        except ValueError:
+                                            pass
+                                            
+                            elif "FINAL BOUNTIES" in raw_msg:
+                                lines = raw_msg.split('\n')
+                                for line in lines:
+                                    if ':' in line and 'FINAL BOUNTIES' not in line:
+                                        self.overall_winner = line.split(':')[0].strip()
+                                        self.game_over = True
+                                        self.is_quickdraw = False
+                                        break
+                            
+                            for m_line in raw_msg.split('\n'):
+                                if m_line.strip() == "":
+                                    self.msg_queue.put(("", SVGA['TEXT_LIGHT'])) 
+                                else:
+                                    color = SVGA['TEXT_LIGHT']
+                                    if '>>>' in m_line: color = SVGA['TEXT_BLUE']
+                                    elif 'BANG' in m_line or 'Misfire' in m_line: color = SVGA['TEXT_RED']
+                                    elif 'wins' in m_line.lower() or 'won' in m_line.lower(): color = SVGA['TEXT_GREEN']
+                                    elif 'SPECIAL QUICKDRAW' in m_line or 'MOONSHINE' in m_line or 'PAUSED' in m_line or 'joins the fun' in m_line: color = SVGA['GOLD']
+                                    
+                                    wrapped = textwrap.wrap(m_line, self.max_chars)
+                                    for w_line in wrapped:
+                                        self.msg_queue.put((w_line, color))
+                                        
+                        if msg.get('action') == 'quit':
+                            self.msg_queue.put(("Server closed. You can close this window.", SVGA['TEXT_RED']))
+                            self.log_game_text("Server closed. You can close this window.")
+                    except Exception:
+                        pass
+            except:
+                self.msg_queue.put(("Disconnected from the server.", SVGA['TEXT_LIGHT']))
+                self.log_game_text("Disconnected from the server.")
+                break
+
+    def draw_setup_screen(self):
+        self.screen.fill(SVGA['BG_GREEN'])
+        
+        form_w, form_h = 640, 600
+        fx = self.res[0]//2 - form_w//2
+        fy = self.res[1]//2 - form_h//2
+        
+        shadow_rect = pygame.Surface((form_w, form_h), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_rect, SVGA['CARD_SHADOW'], shadow_rect.get_rect(), border_radius=4)
+        self.screen.blit(shadow_rect, (fx + 10, fy + 10))
+        
+        poly_points = [
+            (fx + 40, fy), (fx + form_w, fy),
+            (fx + form_w, fy + form_h - 40), (fx + form_w - 40, fy + form_h),
+            (fx, fy + form_h), (fx, fy + 40)
+        ]
+        pygame.draw.polygon(self.screen, SVGA['POSTER'], poly_points)
+        pygame.draw.polygon(self.screen, SVGA['POSTER_DARK'], poly_points, 4)
+        
+        tl_curl = [(fx, fy + 40), (fx + 40, fy), (fx + 40, fy + 40)]
+        pygame.draw.polygon(self.screen, SVGA['POSTER_DARK'], tl_curl)
+        pygame.draw.polygon(self.screen, SVGA['INK'], tl_curl, 2)
+        
+        br_curl = [(fx + form_w, fy + form_h - 40), (fx + form_w - 40, fy + form_h), (fx + form_w - 40, fy + form_h - 40)]
+        pygame.draw.polygon(self.screen, SVGA['POSTER_DARK'], br_curl)
+        pygame.draw.polygon(self.screen, SVGA['INK'], br_curl, 2)
+        
+        title_surf = self.title_font.render("WANTED", True, SVGA['INK'])
+        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, fy + 25))
+        
+        subtitle_surf = self.ledger_font.render("GUNSLINGERS FOR HIRE", True, SVGA['INK'])
+        self.screen.blit(subtitle_surf, (self.res[0]//2 - subtitle_surf.get_width()//2, fy + 100))
+        
+        pygame.draw.line(self.screen, SVGA['INK'], (fx + 60, fy + 130), (fx + form_w - 60, fy + 130), 3)
+        
+        fields = [
+            ('MODE', "Role (S=Host, C=Client):", "Host" if self.is_host else ("Client" if self.setup_step != 'MODE' else "")),
+            ('NAME', "Gunslinger Name:", self.name if self.setup_step not in ['MODE', 'NAME'] else ""),
+            ('AGE', "Age (years):", str(self.age) if self.setup_step not in ['MODE', 'NAME', 'AGE'] else ""),
+            ('HEIGHT', "Height (feet):", str(self.height) if self.setup_step not in ['MODE', 'NAME', 'AGE', 'HEIGHT'] else ""),
+            ('WEIGHT', "Weight (lbs):", str(self.weight_lbs) if self.setup_step not in ['MODE', 'NAME', 'AGE', 'HEIGHT', 'WEIGHT'] else ""),
+            ('NETWORK', "AI Bots (0-7):" if self.is_host else "Host IP:", str(self.ai_count) if self.is_host and self.setup_step not in ['MODE', 'NAME', 'AGE', 'HEIGHT', 'WEIGHT', 'NETWORK'] else (self.host_ip if not self.is_host and self.setup_step not in ['MODE', 'NAME', 'AGE', 'HEIGHT', 'WEIGHT', 'NETWORK'] else "")),
+            ('PORT', "Port:", str(self.port) if self.setup_step not in ['MODE', 'NAME', 'AGE', 'HEIGHT', 'WEIGHT', 'NETWORK', 'PORT'] else "")
+        ]
+        
+        start_y = fy + 160
+        self.blink_timer += 1
+        
+        for idx, (step_id, label, static_val) in enumerate(fields):
+            y_pos = start_y + (idx * 50)
+            
+            lbl_color = SVGA['INK'] if self.setup_sequence.index(self.setup_step) >= idx else (180, 160, 130)
+            lbl_surf = self.ledger_font.render(label, True, lbl_color)
+            self.screen.blit(lbl_surf, (fx + 50, y_pos)) 
+            
+            box_x = fx + 420 
+            box_w = 150
+            
+            if self.setup_step == step_id:
+                pygame.draw.line(self.screen, SVGA['INK'], (box_x, y_pos + 25), (box_x + box_w, y_pos + 25), 2)
+                display_input = self.input_text + ("_" if self.blink_timer % 30 < 15 else "")
+                val_surf = self.ledger_font.render(display_input, True, SVGA['INK'])
+                self.screen.blit(val_surf, (box_x + 5, y_pos))
+            else:
+                pygame.draw.line(self.screen, (180, 160, 130), (box_x, y_pos + 25), (box_x + box_w, y_pos + 25), 2)
+                if static_val:
+                    val_surf = self.ledger_font.render(static_val, True, SVGA['INK'])
+                    self.screen.blit(val_surf, (box_x + 5, y_pos))
+
+        if self.setup_error:
+            e_surf = self.ledger_font.render(self.setup_error, True, SVGA['TEXT_RED'])
+            self.screen.blit(e_surf, (self.res[0]//2 - e_surf.get_width()//2, fy + form_h - 50))
+
+        pygame.display.flip()
+
+    def draw_title_screen(self):
+        self.screen.fill(SVGA['BLACK'])
+        
+        title_surf = self.title_font.render("TRIGGERED", True, SVGA['TEXT_RED'])
+        self.screen.blit(title_surf, (self.res[0]//2 - title_surf.get_width()//2, 80))
+        
+        subtitle = self.font.render("HOW TO SURVIVE THE STANDOFF", True, SVGA['GOLD'])
+        self.screen.blit(subtitle, (self.res[0]//2 - subtitle.get_width()//2, 180))
+        
+        pygame.draw.line(self.screen, SVGA['GOLD'], (self.res[0]//2 - 200, 210), (self.res[0]//2 + 200, 210), 2)
+        
+        rules = [
+            "1. Goal: Collect the most cards, partner.",
+            "2. A 'Bullseye' card is dealt face-up.",
+            "3. When dealer yells 'CLICK CLICK', cards flip.",
+            "4. QUICK DRAW: If ANY match to Bullseye, press the 'T' key immediately!",
+            "5. No match? Highest card takes the pot.",
+            "6. TIE-BREAKER: Ties trigger a sudden-death Quickdraw round!",
+            "7. MISFIRE: Press 'T' with no match? You lose the round!",
+            "8. MOONSHINE ROUND: Zeros can steal from the leader in the end!"
+        ]
+        
+        y = 250
+        for r in rules:
+            r_surf = self.font.render(r, True, SVGA['TEXT_LIGHT'])
+            self.screen.blit(r_surf, (self.res[0]//2 - 320, y))
+            y += 35
+            
+        self.blink_timer += 1
+        if self.blink_timer % 30 < 15:
+            prompt = self.font.render("PRESS SPACE TO KICK OPEN THE DOORS", True, SVGA['TEXT_BLUE'])
+            self.screen.blit(prompt, (self.res[0]//2 - prompt.get_width()//2, self.res[1] - 100))
+
+        pygame.display.flip()
+
+    def draw_door_anim_screen(self):
+        self.draw_game_screen() 
+        
+        door_color = (120, 80, 30)
+        dark_wood = (70, 40, 15)
+        
+        left_w = int((self.res[0] // 2) * (1.0 - self.door_progress))
+        right_w = int((self.res[0] // 2) * (1.0 - self.door_progress))
+        
+        if self.door_progress < 1.0:
+            pygame.draw.rect(self.screen, door_color, (0, 0, left_w, self.res[1]))
+            if left_w > 10:
+                pygame.draw.rect(self.screen, dark_wood, (0, 0, left_w, self.res[1]), 8)
+                for y in range(100, self.res[1] - 100, 50):
+                    pygame.draw.line(self.screen, dark_wood, (20, y), (left_w - 20, y), max(2, int(6*(1.0-self.door_progress))))
+                    
+            right_x = self.res[0] - right_w
+            pygame.draw.rect(self.screen, door_color, (right_x, 0, right_w, self.res[1]))
+            if right_w > 10:
+                pygame.draw.rect(self.screen, dark_wood, (right_x, 0, right_w, self.res[1]), 8)
+                for y in range(100, self.res[1] - 100, 50):
+                    pygame.draw.line(self.screen, dark_wood, (right_x + 20, y), (right_x + right_w - 20, y), max(2, int(6*(1.0-self.door_progress))))
+
+        self.door_progress += 0.02
+        if self.door_progress >= 1.0:
+            self.state = 'GAME'
+            
+        pygame.display.flip()
+
+    def draw_pistol(self, x, y, flip_x=False):
+        surf = pygame.Surface((120, 70), pygame.SRCALPHA)
+        # Barrel
+        pygame.draw.rect(surf, (150, 150, 160), (50, 15, 65, 12), border_radius=2)
+        pygame.draw.rect(surf, (100, 100, 110), (50, 27, 50, 6)) # underbarrel
+        
+        # Cylinder
+        pygame.draw.rect(surf, (120, 120, 130), (30, 12, 24, 26), border_radius=4)
+        for i in range(32, 54, 8):
+            pygame.draw.line(surf, (80, 80, 90), (i, 12), (i, 38), 2)
+            
+        # Frame
+        pygame.draw.rect(surf, (130, 130, 140), (25, 15, 15, 20))
+        
+        # Grip
+        pygame.draw.polygon(surf, SVGA['WOOD_BASE'], [(10, 60), (30, 60), (35, 30), (15, 30)])
+        pygame.draw.polygon(surf, SVGA['WOOD_DARK'], [(10, 60), (30, 60), (35, 30), (15, 30)], 2)
+        
+        # Hammer & Trigger
+        pygame.draw.polygon(surf, (150, 150, 160), [(25, 15), (15, 5), (20, 15)])
+        pygame.draw.circle(surf, (150, 150, 160), (38, 42), 10, 3)
+        pygame.draw.line(surf, (100, 100, 110), (35, 35), (38, 42), 2)
+
+        if flip_x:
+            surf = pygame.transform.flip(surf, True, False)
+        
+        self.screen.blit(surf, (x - 60, y - 35))
+
+    def draw_moonshine_waiting_sign(self):
+        cx = self.left_panel_w + (self.res[0] - self.left_panel_w) // 2
+        cy = self.res[1] // 2
+        
+        board_w, board_h = 450, 280
+        bx, by = cx - board_w//2, cy - board_h//2
+        
+        shadow_rect = pygame.Surface((board_w, board_h), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_rect, SVGA['CARD_SHADOW'], shadow_rect.get_rect(), border_radius=10)
+        self.screen.blit(shadow_rect, (bx + 8, by + 8))
+        
+        pygame.draw.rect(self.screen, SVGA['WOOD_BASE'], (bx, by, board_w, board_h), border_radius=10)
+        pygame.draw.rect(self.screen, SVGA['WOOD_DARK'], (bx, by, board_w, board_h), 4, border_radius=10)
+        
+        title = self.font.render("MOONSHINE SHOOTOUT!", True, SVGA['GOLD'])
+        self.screen.blit(title, (cx - title.get_width()//2, by + 20))
+        
+        h_text = self.small_font.render("Hunters (0 pts):", True, SVGA['WHITE'])
+        self.screen.blit(h_text, (cx - h_text.get_width()//2, by + 70))
+        h_names = self.font.render(", ".join(self.moonshine_hunters), True, SVGA['TEXT_RED'])
+        self.screen.blit(h_names, (cx - h_names.get_width()//2, by + 90))
+        
+        l_text = self.small_font.render("Leaders (At Risk):", True, SVGA['WHITE'])
+        self.screen.blit(l_text, (cx - l_text.get_width()//2, by + 140))
+        l_names = self.font.render(", ".join(self.moonshine_leaders), True, SVGA['TEXT_GREEN'])
+        self.screen.blit(l_names, (cx - l_names.get_width()//2, by + 160))
+        
+        self.blink_timer += 1
+        if self.blink_timer % 30 < 15:
+            wait_text = self.small_font.render("Wait for the jug to be thrown...", True, SVGA['GOLD'])
+            self.screen.blit(wait_text, (cx - wait_text.get_width()//2, by + 230))
+
+    def draw_moonshine_jug(self):
+        cx = self.left_panel_w + (self.res[0] - self.left_panel_w)//2
+        cy = self.res[1]//2
+        
+        if self.jug_shot:
+            self.cork_y += self.cork_dy
+            self.cork_x += self.cork_dx
+            self.cork_dy += 1 # Gravity logic
+        
+        if self.jug_flash_alpha > 0:
+            flash_surf = pygame.Surface((200, 260), pygame.SRCALPHA)
+            pygame.draw.rect(flash_surf, (255, 255, 255, self.jug_flash_alpha), flash_surf.get_rect(), border_radius=16)
+            self.screen.blit(flash_surf, (cx - 100, cy - 130))
+            self.jug_flash_alpha = max(0, self.jug_flash_alpha - 8)
+
+        # Jug shadow
+        pygame.draw.ellipse(self.screen, SVGA['CARD_SHADOW'], (cx - 65, cy + 80, 130, 30))
+        
+        # Jug Base
+        pygame.draw.circle(self.screen, (160, 110, 70), (cx, cy + 30), 65)
+        pygame.draw.rect(self.screen, (160, 110, 70), (cx - 30, cy - 60, 60, 90))
+        
+        pygame.draw.circle(self.screen, (100, 60, 30), (cx, cy + 30), 65, 4)
+        pygame.draw.line(self.screen, (100, 60, 30), (cx - 30, cy - 60), (cx - 30, cy - 10), 4)
+        pygame.draw.line(self.screen, (100, 60, 30), (cx + 30, cy - 60), (cx + 30, cy - 10), 4)
+        
+        # Jug Handle
+        pygame.draw.arc(self.screen, (160, 110, 70), (cx + 25, cy - 40, 50, 60), -math.pi/2, math.pi/2, 12)
+        pygame.draw.arc(self.screen, (100, 60, 30), (cx + 25, cy - 40, 50, 60), -math.pi/2, math.pi/2, 4)
+        
+        # Cork (Uses physics offset)
+        cork_draw_x = cx - 20 + self.cork_x
+        cork_draw_y = cy - 80 + self.cork_y
+        pygame.draw.rect(self.screen, (200, 170, 120), (cork_draw_x, cork_draw_y, 40, 20))
+        pygame.draw.rect(self.screen, (120, 90, 50), (cork_draw_x, cork_draw_y, 40, 20), 3)
+        
+        # XXX Label
+        pygame.draw.rect(self.screen, (240, 230, 210), (cx - 35, cy + 10, 70, 40))
+        pygame.draw.rect(self.screen, (100, 60, 30), (cx - 35, cy + 10, 70, 40), 2)
+        xxx_surf = self.font.render("XXX", True, (150, 20, 20))
+        self.screen.blit(xxx_surf, (cx - xxx_surf.get_width()//2, cy + 20))
+        
+        # Draw Jug bullet holes
+        for bx_offset, by_offset in self.jug_bullet_holes:
+            bx, by = cx + bx_offset, cy + by_offset
+            pygame.draw.circle(self.screen, (70, 70, 70), (bx, by), 12)
+            pygame.draw.circle(self.screen, (15, 15, 15), (bx, by), 7)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx+18, by-12), 2)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx-15, by-15), 2)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx-8, by+18), 2)
+
+    def draw_card(self, x, y, width, height, value, suit, label, revealed, is_winner=False, bullet_holes=None, has_tombstone=False, flash_alpha=0):
+        if bullet_holes is None:
+            bullet_holes = []
+            
+        lbl_color = SVGA['TEXT_GREEN'] if is_winner else SVGA['GOLD']
+        lbl_surf = self.small_font.render(label, True, lbl_color)
+        self.screen.blit(lbl_surf, (x + width//2 - lbl_surf.get_width()//2, y - 25))
+        
+        shadow_rect = pygame.Surface((width, height), pygame.SRCALPHA)
+        pygame.draw.rect(shadow_rect, SVGA['CARD_SHADOW'], shadow_rect.get_rect(), border_radius=8)
+        self.screen.blit(shadow_rect, (x + 5, y + 5))
+        
+        border_color = SVGA['GOLD'] if is_winner else (200, 200, 200)
+        border_thickness = 4 if is_winner else 2
+        
+        if not revealed:
+            pygame.draw.rect(self.screen, (20, 50, 100), (x, y, width, height), border_radius=8)
+            pygame.draw.rect(self.screen, border_color, (x, y, width, height), border_thickness, border_radius=8)
+            for i in range(10, width, 15):
+                pygame.draw.line(self.screen, (30, 80, 150), (x+i, y), (x+i, y+height), 2)
+        else:
+            pygame.draw.rect(self.screen, SVGA['WHITE'], (x, y, width, height), border_radius=8)
+            pygame.draw.rect(self.screen, border_color, (x, y, width, height), border_thickness, border_radius=8) 
+            
+            color = SVGA['SUIT_RED'] if suit in ['Hearts', 'Diamonds'] else SVGA['SUIT_BLACK']
+            
+            val_surf = self.card_font.render(value, True, color)
+            self.screen.blit(val_surf, (x + 10, y + 10))
+            
+            cx, cy = x + width // 2, y + height // 2 + 10
+            size = 20 if width > 100 else 12
+            
+            if suit == 'Diamonds':
+                pygame.draw.polygon(self.screen, color, [(cx, cy-size), (cx+size*0.8, cy), (cx, cy+size), (cx-size*0.8, cy)])
+            elif suit == 'Hearts':
+                pygame.draw.circle(self.screen, color, (cx-size//2, cy-size//2), size//2 + 2)
+                pygame.draw.circle(self.screen, color, (cx+size//2, cy-size//2), size//2 + 2)
+                pygame.draw.polygon(self.screen, color, [(cx-size, cy-size//3), (cx+size, cy-size//3), (cx, cy+size)])
+            elif suit == 'Spades':
+                pygame.draw.circle(self.screen, color, (cx-size//2, cy+size//3), size//2 + 2)
+                pygame.draw.circle(self.screen, color, (cx+size//2, cy+size//3), size//2 + 2)
+                pygame.draw.polygon(self.screen, color, [(cx-size, cy+size//3), (cx+size, cy+size//3), (cx, cy-size)])
+                pygame.draw.rect(self.screen, color, (cx-size//4, cy+size//3, size//2, size))
+            elif suit == 'Clubs':
+                pygame.draw.circle(self.screen, color, (cx, cy-size//1.5), size//2 + 2)
+                pygame.draw.circle(self.screen, color, (cx-size//1.5, cy+size//3), size//2 + 2)
+                pygame.draw.circle(self.screen, color, (cx+size//1.5, cy+size//3), size//2 + 2)
+                pygame.draw.rect(self.screen, color, (cx-size//4, cy+size//3, size//2, size))
+
+        if flash_alpha > 0:
+            flash_surf = pygame.Surface((width + 40, height + 40), pygame.SRCALPHA)
+            pygame.draw.rect(flash_surf, (255, 255, 255, flash_alpha), flash_surf.get_rect(), border_radius=16)
+            self.screen.blit(flash_surf, (x - 20, y - 20))
+
+        for bx_offset, by_offset in bullet_holes:
+            bx, by = x + width // 2 + bx_offset, y + height // 2 + by_offset
+            pygame.draw.circle(self.screen, (70, 70, 70), (bx, by), 12)
+            pygame.draw.circle(self.screen, (15, 15, 15), (bx, by), 7)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx+18, by-12), 2)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx-15, by-15), 2)
+            pygame.draw.line(self.screen, (40, 40, 40), (bx, by), (bx-8, by+18), 2)
+
+        if has_tombstone:
+            tx = x + width // 2
+            ty = y + height // 2 + 10
+            
+            pygame.draw.rect(self.screen, (100, 100, 100), (tx - 30, ty - 10, 60, 50))
+            pygame.draw.circle(self.screen, (100, 100, 100), (tx, ty - 10), 30)
+            
+            pygame.draw.line(self.screen, (50, 50, 50), (tx - 30, ty - 10), (tx - 30, ty + 38), 2) 
+            pygame.draw.line(self.screen, (50, 50, 50), (tx + 30, ty - 10), (tx + 30, ty + 38), 2) 
+            pygame.draw.line(self.screen, (50, 50, 50), (tx - 31, ty + 39), (tx + 31, ty + 39), 2) 
+            pygame.draw.arc(self.screen, (50, 50, 50), (tx - 30, ty - 40, 60, 60), 0, math.pi, 2)  
+            
+            rip_surf = self.small_font.render("R.I.P.", True, SVGA['BLACK'])
+            self.screen.blit(rip_surf, (tx - rip_surf.get_width()//2, ty - 5))
+
+    def draw_game_screen(self):
+        self.screen.fill(SVGA['BG_GREEN'])
+        
+        panel_rect = pygame.Surface((self.left_panel_w, self.res[1]), pygame.SRCALPHA)
+        pygame.draw.rect(panel_rect, SVGA['UI_PANEL'], panel_rect.get_rect())
+        self.screen.blit(panel_rect, (0, 0))
+        pygame.draw.line(self.screen, SVGA['GOLD'], (self.left_panel_w, 0), (self.left_panel_w, self.res[1]), 3)
+        
+        banner = self.font.render(f"GUNSLINGER: {self.name} | THUMPER: {self.thumper}", True, SVGA['GOLD'])
+        self.screen.blit(banner, (20, 20))
+        pygame.draw.line(self.screen, SVGA['TEXT_LIGHT'], (20, 50), (self.left_panel_w - 20, 50), 1)
+        
+        for msg in self.log_messages:
+            msg.update()
+            if msg.y > 60 and msg.y < self.res[1]: 
+                text_surface = self.font.render(msg.text, True, msg.color)
+                self.screen.blit(text_surface, (20, msg.y))
+
+        # Check state to decide what goes in center of table
+        if self.moonshine_waiting:
+            self.draw_moonshine_waiting_sign()
+        elif self.show_moonshine_jug:
+            self.draw_moonshine_jug()
+        else:
+            if self.bullseye_anim_card:
+                c = self.bullseye_anim_card
+                c.update()
+                self.draw_card(c.draw_x, c.draw_y, 150, 210, c.value, c.suit, c.label, c.revealed, bullet_holes=c.bullet_holes)
+                
+                # Draw quickdraw colts if active
+                if self.is_quickdraw and c.revealed:
+                    self.draw_pistol(c.draw_x - 40, c.draw_y + 105, flip_x=False)
+                    self.draw_pistol(c.draw_x + 190, c.draw_y + 105, flip_x=True)
+                
+            for p_name, c in self.player_cards.items():
+                c.update()
+                label = "YOU" if p_name == self.name else p_name
+                self.draw_card(c.draw_x, c.draw_y, 100, 140, c.value, c.suit, label, c.revealed, c.is_winner, c.bullet_holes, c.has_tombstone, c.flash_alpha)
+
+        if self.game_over and self.overall_winner:
+            font_big = pygame.font.SysFont('impact', 64)
+            win_text_str = f"WINNER: {self.overall_winner}"
+            sub_text_str = "THE FASTEST GUN IN THE WEST"
+            
+            win_text_w = font_big.size(win_text_str)[0]
+            sub_text_w = self.card_font.size(sub_text_str)[0]
+            
+            board_w = max(500, win_text_w + 80, sub_text_w + 80)
+            board_h = 180
+            cx = self.left_panel_w + (self.res[0] - self.left_panel_w)//2
+            cy = self.res[1]//2
+            bx, by = cx - board_w//2, cy - board_h//2
+            
+            shadow_rect = pygame.Surface((board_w, board_h), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_rect, SVGA['CARD_SHADOW'], shadow_rect.get_rect(), border_radius=10)
+            self.screen.blit(shadow_rect, (bx + 8, by + 8))
+            
+            pygame.draw.rect(self.screen, SVGA['WOOD_BASE'], (bx, by, board_w, board_h), border_radius=10)
+            
+            pygame.draw.line(self.screen, SVGA['WOOD_LINE'], (bx, by + board_h//3), (bx + board_w, by + board_h//3), 4)
+            pygame.draw.line(self.screen, SVGA['WOOD_LINE'], (bx, by + 2*board_h//3), (bx + board_w, by + 2*board_h//3), 4)
+            
+            pygame.draw.rect(self.screen, SVGA['WOOD_DARK'], (bx, by, board_w, board_h), 6, border_radius=10)
+            
+            for nx, ny in [(bx+20, by+20), (bx+board_w-20, by+20), (bx+20, by+board_h-20), (bx+board_w-20, by+board_h-20)]:
+                pygame.draw.circle(self.screen, (50, 50, 50), (nx, ny), 8)
+                pygame.draw.circle(self.screen, (100, 100, 100), (nx-2, ny-2), 3) 
+            
+            win_text = font_big.render(win_text_str, True, SVGA['GOLD'])
+            shadow = font_big.render(win_text_str, True, SVGA['BLACK'])
+            sub_text = self.card_font.render(sub_text_str, True, SVGA['WHITE'])
+            
+            self.screen.blit(shadow, (cx - shadow.get_width()//2 + 4, cy - shadow.get_height()//2 - 20 + 4))
+            self.screen.blit(win_text, (cx - win_text.get_width()//2, cy - win_text.get_height()//2 - 20))
+            self.screen.blit(sub_text, (cx - sub_text.get_width()//2, cy + 30))
+
+        if self.is_paused and not self.game_over:
+            p_surf = self.title_font.render("PAUSED", True, SVGA['TEXT_RED'])
+            cx = self.left_panel_w + (self.res[0] - self.left_panel_w)//2
+            cy = self.res[1]//2
+            
+            shadow_rect = pygame.Surface((p_surf.get_width() + 40, p_surf.get_height() + 20), pygame.SRCALPHA)
+            pygame.draw.rect(shadow_rect, (0,0,0, 180), shadow_rect.get_rect(), border_radius=10)
+            self.screen.blit(shadow_rect, (cx - shadow_rect.get_width()//2, cy - shadow_rect.get_height()//2))
+            
+            self.screen.blit(p_surf, (cx - p_surf.get_width()//2, cy - p_surf.get_height()//2))
+
+        if self.state != 'DOOR_ANIM': 
+            pygame.display.flip()
+
+    def process_messages(self):
+        while not self.msg_queue.empty():
+            text, color = self.msg_queue.get()
+            if text == "":
+                self.add_log_message(" ", color)
+            else:
+                self.add_log_message(text, color)
+
+    def run(self):
+        clock = pygame.time.Clock()
+        
+        while self.running:
+            self.process_messages()
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    if self.is_host and self.client_socket:
+                        msg = json.dumps({'action': 'exit'}) + "\n"
+                        try:
+                            self.client_socket.sendall(msg.encode())
+                        except:
+                            pass
+                elif event.type == pygame.KEYDOWN:
+                    if self.state == 'SETUP':
+                        self.handle_setup_input(event)
+                        
+                    elif self.state == 'TITLE':
+                        if event.key == pygame.K_SPACE:
+                            self.state = 'DOOR_ANIM' 
+                            self.door_progress = 0.0
+                            
+                        elif event.key == pygame.K_d:
+                            if not self.debug_logging:
+                                self.debug_logging = True
+                                self.debug_filename = f"debug_{int(time.time())}.log"
+                                try:
+                                    with open(self.debug_filename, 'w') as f:
+                                        f.write("--- TRIGGERED RULES & TEXT DUMP ---\n\nRULES:\n")
+                                        rules = [
+                                            "1. Goal: Collect the most cards, partner.",
+                                            "2. A 'Bullseye' card is dealt face-up.",
+                                            "3. When dealer yells 'CLICK CLICK', cards flip.",
+                                            "4. QUICK DRAW: If ANY match to Bullseye, press the 'T' key immediately!",
+                                            "5. No match? Highest card takes the pot.",
+                                            "6. TIE-BREAKER: Ties trigger a sudden-death Quickdraw round!",
+                                            "7. MISFIRE: Press 'T' with no match? You lose the round!",
+                                            "8. MOONSHINE ROUND: Zeros can steal from the leader in the end!"
+                                        ]
+                                        f.write("\n".join(rules) + "\n\nMESSAGE HISTORY:\n")
+                                        f.write("\n".join(self.full_message_history) + "\n")
+                                    print(f"Successfully started logging game text to {self.debug_filename}")
+                                except Exception as e:
+                                    print(f"Failed to start debug log file: {e}")
+                            
+                    elif self.state == 'GAME':
+                        if event.key == pygame.K_p:
+                            msg = json.dumps({'action': 'toggle_pause'}) + "\n"
+                            self.client_socket.sendall(msg.encode())
+                            
+                        elif event.key == pygame.K_q:
+                            self.sound_enabled = not self.sound_enabled
+                            if self.sound_enabled:
+                                try: pygame.mixer.music.set_volume(0.3)
+                                except: pass
+                                self.add_log_message("Sound: ON", SVGA['TEXT_GREEN'])
+                                self.log_game_text("Sound: ON")
+                            else:
+                                try: pygame.mixer.music.set_volume(0.0)
+                                except: pass
+                                self.add_log_message("Sound: MUTED", SVGA['TEXT_RED'])
+                                self.log_game_text("Sound: MUTED")
+                        
+                        elif event.key == pygame.K_t: 
+                            self.add_log_message(">>> You reached for your iron! <<<", SVGA['TEXT_BLUE'])
+                            self.log_game_text(">>> You reached for your iron! <<<")
+                            
+                            if self.gunshot_sound and self.sound_enabled:
+                                self.gunshot_sound.play()
+                                
+                            if self.show_moonshine_jug:
+                                self.jug_bullet_holes.append((random.randint(-40, 40), random.randint(-40, 60)))
+                                self.jug_flash_alpha = 255
+                            elif self.cards_dealt and self.name in self.player_cards:
+                                c = self.player_cards[self.name]
+                                c.bullet_holes.append((random.randint(-35, 35), random.randint(-45, 45)))
+                                c.flash_alpha = 255
+                                
+                            msg = json.dumps({'action': 'trigger'}) + "\n"
+                            self.client_socket.sendall(msg.encode())
+                            
+                        elif event.key == pygame.K_s: 
+                            if self.is_host:
+                                msg = json.dumps({'action': 'start'}) + "\n"
+                                self.client_socket.sendall(msg.encode())
+                            else:
+                                self.add_log_message("Only the Host can start the game.", SVGA['TEXT_RED'])
+                                self.log_game_text("Only the Host can start the game.")
+                        elif event.key == pygame.K_r: 
+                            if self.is_host:
+                                msg = json.dumps({'action': 'restart'}) + "\n"
+                                self.client_socket.sendall(msg.encode())
+                            else:
+                                self.add_log_message("Only the Host can restart the game.", SVGA['TEXT_RED'])
+                                self.log_game_text("Only the Host can restart the game.")
+
+            if self.state == 'SETUP':
+                self.draw_setup_screen()
+            elif self.state == 'TITLE':
+                self.draw_title_screen()
+            elif self.state == 'DOOR_ANIM':
+                self.draw_door_anim_screen()
+            elif self.state == 'GAME':
+                self.draw_game_screen()
+                
+            clock.tick(60) 
+            
+        pygame.quit()
+        os._exit(0)
+
+if __name__ == "__main__":
+    app = TriggeredGameApp()
+    app.run()
+
+```
