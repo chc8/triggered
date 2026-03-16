@@ -1,3 +1,23 @@
+Prompt:
+The game doesn't run, this error is shown on the console:
+pygame 2.6.1 (SDL 2.28.4, Python 3.12.3)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+Traceback (most recent call last):
+  File "/home/corey/Documents/src/Triggered/triggered.py", line 1812, in <module>
+    app.run()
+  File "/home/corey/Documents/src/Triggered/triggered.py", line 1797, in run
+    self.draw_setup_screen()
+  File "/home/corey/Documents/src/Triggered/triggered.py", line 1204, in draw_setup_screen
+    if self.tumbleweed_state in ['ROLLING', 'BLOWING_AWAY']:
+       ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TriggeredGameApp' object has no attribute 'tumbleweed_state'. Did you mean: 'tumbleweeds'?
+
+Response:
+I apologize for that! I accidentally pasted an older version of the `__init__` and input handler functions into the final code block of my last response, which completely wiped out the initialization of the `self.tumbleweed_state` and the two new methods required to calculate the math for the animation.
+
+Here is the correctly assembled, fully functional code with the state machine properly initialized.
+
+```python
 import socket
 import threading
 import json
@@ -1838,3 +1858,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
