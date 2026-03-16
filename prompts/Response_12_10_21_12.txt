@@ -1,3 +1,19 @@
+Prompt:
+Address the following regarding the moonshine jug animation:
+- The flash seen when the jug is shot is not very obvious.  It is only noticeable once the cork flies off, because the layer behind where the cork was flashes.  Does the flash layer need to be flashing longer, or on the top layer?
+- The flash should not be present behind the cork, because the cork flies off when shot.
+- When the moonshine jug is shot, animate some moonshine splashing out from the top of the jug, sending droplets in an explosion splash pattern (for each shot).
+
+Response:
+Here is the completely updated code.
+
+### Changes Made:
+
+1. **Flash Layering & Duration:** The whiteout flash has been moved to the very top drawing layer (rendering *over* the jug and bullet holes instead of behind them). I also decreased the alpha-fade speed so the flash hangs on the screen just a little bit longer.
+2. **Removed Cork Flash:** When calculating the flash shape, the code now checks if the cork has popped (`self.jug_shot`). If it has, the flash shape dynamically omits the cork's geometry so you don't see a "ghost" flash where the cork used to be.
+3. **Moonshine Particle Explosion:** Created a dynamic particle system. Every time a bullet strikes the jug, 20 to 35 translucent, light-blue "moonshine droplets" explode out of the top spout with upward velocity and fall back down via gravity fading into the background.
+
+```python
 import socket
 import threading
 import json
@@ -1810,3 +1826,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
