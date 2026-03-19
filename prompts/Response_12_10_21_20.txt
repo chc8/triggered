@@ -1,3 +1,84 @@
+Prompt:
+The build completed, and the Linux executable ran, however there was no sound.
+- I noticed the assets folder was missing when I decompressed the Triggered-ubuntu-22.04.tar.gz file.
+- Should the pyinstaller be making a standalone executable, or does it just include the assets folder?
+
+Response:
+You have officially hit the very last hurdle of packaging a Pygame! The fact that the Linux executable ran at all means your GitHub Actions YAML file is working perfectly.
+
+To answer your question directly: **Yes, PyInstaller is doing exactly what it should.** When you use the `--onefile` flag, PyInstaller takes that `assets` folder and stuffs it directly *inside* the standalone executable. That is why you don't see an `assets` folder sitting next to the game when you decompress it.
+
+### The Mystery of the Missing Sound
+
+If the assets are inside the executable, why is the game silent?
+
+It comes down to how PyInstaller handles files at runtime. When someone double-clicks your standalone executable, PyInstaller silently unpacks your game and all its assets into a hidden, temporary folder on their computer (usually named something like `_MEIPASS`).
+
+However, your Python code doesn't know this happened. If your code is looking for a sound by simply calling `pygame.mixer.Sound('assets/six_shooter.wav')`, it is looking in the folder where the user *clicked* the executable, not the hidden temporary folder where PyInstaller actually put the audio files. Since the sound isn't there, it fails silently (or throws an error in the background).
+
+### The Fix: The PyInstaller Path Helper
+
+You need to add a tiny helper function to your Python code that tells your game to look in the `_MEIPASS` temporary folder when it's running as a packaged app, but to look in the normal local folder when you are just coding and testing it yourself.
+
+**Step 1: Add this function near the top of your `main.py**`
+Make sure you have `import os` and `import sys` at the top of your file, then drop this function in:
+
+```python
+import os
+import sys
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+```
+
+**Step 2: Wrap all your asset paths in this function**
+Anywhere in your code where you load an image, a font, a text file (like your saloon ledger), or a sound, you need to wrap the string path in that `resource_path()` function.
+
+**Old Way:**
+
+```python
+bullet_image = pygame.image.load('assets/45_colt.png')
+gun_sound = pygame.mixer.Sound('assets/six_shooter.wav')
+
+```
+
+**New Way:**
+
+```python
+bullet_image = pygame.image.load(resource_path('assets/45_colt.png'))
+gun_sound = pygame.mixer.Sound(resource_path('assets/six_shooter.wav'))
+
+```
+
+### Next Steps
+
+1. Update your Python script to use this `resource_path()` helper for every single external file your game loads.
+2. Run the game locally on your machine just by running the python script to make sure it still plays sound properly (this proves the `except` block in the helper function works).
+3. Push those code changes up to GitHub, tag a new release (e.g., `v1.0.6`), and let the actions run one more time.
+
+Once that finishes, Triggered should have full audio on Linux, Windows, and Mac!
+
+
+Prompt 2:
+Can you updated triggered.py with the appropriate changes mentioned?
+Find triggered.py attached.
+
+Response 2:
+Here is your fully updated `triggered.py` file.
+
+I've added the `resource_path()` helper function near the top with your other utility functions, and I wrapped the file paths for your `western_theme.mp3` and `gunshot` audio files inside the `TriggeredGameApp.__init__` method.
+
+You can safely replace your entire `triggered.py` with the code below.
+
+```python
 import socket
 import threading
 import json
@@ -1888,3 +1969,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
