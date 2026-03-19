@@ -1,0 +1,68 @@
+Prompt:
+The build failed on "Create GitHub Release".  The error message is:
+Run softprops/action-gh-release@v2
+👩‍🏭 Creating new GitHub release for tag v1.0.2...
+⚠️ GitHub release failed with status: 403
+{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/releases/releases#create-a-release","status":"403"}
+Skip retry — your GitHub token/PAT does not have the required permission to create a release
+⚠️ Unexpected error fetching GitHub release for tag refs/tags/v1.0.2: HttpError: Resource not accessible by integration - https://docs.github.com/rest/releases/releases#create-a-release
+Error: Resource not accessible by integration - https://docs.github.com/rest/releases/releases#create-a-release
+
+Response:
+Ah, the classic `403` permissions error! Don't worry, there is absolutely nothing wrong with your code or your build process. This is a built-in GitHub security feature stepping in.
+
+By default, GitHub gives the automated `GITHUB_TOKEN` "read-only" access to prevent workflows from accidentally modifying your repository. Because creating a Release involves writing new data (the release notes and the uploaded zip files) to your repo, GitHub blocked it.
+
+You can fix this in one of two ways. The first way (updating the YAML file) is the best practice.
+
+### Option 1: The Code Fix (Recommended)
+
+You just need to explicitly tell GitHub to grant this specific workflow "write" permissions for repository contents.
+
+Open your `build.yml` file and add the `permissions:` block right below your `on:` block, before the `jobs:` start. It should look exactly like this:
+
+```yaml
+name: Build and Release Pygame
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# --- ADD THIS NEW BLOCK ---
+permissions:
+  contents: write
+# --------------------------
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+# ... (the rest of your file stays exactly the same)
+
+```
+
+### Option 2: The Settings Fix (Alternative)
+
+If you'd rather change the default behavior for your entire repository so you don't have to add that block to your YAML files, you can do it through the GitHub website:
+
+1. Go to your repository on GitHub.
+2. Click on the **Settings** tab.
+3. On the left sidebar, scroll down to **Actions** and click **General**.
+4. Scroll down to the **Workflow permissions** section.
+5. Change the selection from "Read repository contents and packages permissions" to **"Read and write permissions"**.
+6. Click **Save**.
+
+---
+
+### How to test the fix:
+
+Since the actual build phase succeeded previously and it only failed at the very end, you know your PyInstaller setup works!
+
+To trigger the release again, just bump your tag version, push it, and watch the magic happen:
+
+```bash
+git tag v1.0.3
+git push origin v1.0.3
+
+```
