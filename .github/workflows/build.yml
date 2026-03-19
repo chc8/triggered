@@ -1,0 +1,76 @@
+name: Build and Release Pygame
+
+# This triggers the build when you push a tag like "v1.0.0" 
+# or manually from the GitHub Actions tab (workflow_dispatch)
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # The matrix runs this job on all three operating systems
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    # CLARIFICATION 1: Handling Assets and the ; vs : separator
+    - name: Build executable with PyInstaller
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
+        else
+          pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
+        fi
+
+    # CLARIFICATION 2: Zipping the macOS App Bundle
+    - name: Zip macOS App Bundle
+      if: matrix.os == 'macos-latest'
+      run: |
+        cd dist
+        zip -r Triggered-macOS.zip Triggered.app
+        rm -rf Triggered.app
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Triggered-${{ matrix.os }}
+        path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') # Only run if a tag was pushed
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
