@@ -1,7 +1,7 @@
 name: Build and Release Pygame
 
-# This triggers the build when you push a tag like "v1.0.0" 
-# or manually from the GitHub Actions tab (workflow_dispatch)
+# This block ensures it ONLY runs when you push a tag like "v1.0.1" 
+# or if you manually click "Run workflow" in the Actions tab.
 on:
   push:
     tags:
@@ -13,54 +13,54 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      # The matrix runs this job on all three operating systems
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
-steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-    # CLARIFICATION 1: Handling Assets and the ; vs : separator
-    - name: Build executable with PyInstaller
-      shell: bash
-      run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
-        else
-          pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
-        fi
+      - name: Build executable with PyInstaller
+        shell: bash
+        # NOTE: If you do not have an "assets" folder yet, remove the 
+        # --add-data "assets..." parts of these commands, or the build will fail.
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
+          else
+            pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
+          fi
 
-    # CLARIFICATION 2: Zipping the macOS App Bundle
-    - name: Zip macOS App Bundle
-      if: matrix.os == 'macos-latest'
-      run: |
-        cd dist
-        zip -r Triggered-macOS.zip Triggered.app
-        rm -rf Triggered.app
+      - name: Zip macOS App Bundle
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd dist
+          zip -r Triggered-macOS.zip Triggered.app
+          rm -rf Triggered.app
 
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: Triggered-${{ matrix.os }}
-        path: dist/*
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Triggered-${{ matrix.os }}
+          path: dist/*
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') # Only run if a tag was pushed
+    # Double-check that this step only runs for tagged releases
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
