@@ -1,2 +1,5 @@
-todo: consider packaging the software for relase
-todo: use github actions to build
+todo: When the player chooses to be a client (not a server) then the option to set the number of decks should be skipped, as it should only be set by the host (server)
+todo: If a client stops communicating (e.g. lost network connection to server, or has closed their client) for a period of 30 seconds, then they should be removed from the game.  If the removed player had any cards when removed from the game, and the game has not ended, then the player that is being removed should have their cards given, spread across, the player or players with the lowest score.
+todo: on the screen somewhere the current card count collections should be shown, perhaps showing the player names ranked in order of high to low card collection count.
+todo: update the README.MD and include some screenshots.  Remove the ascii art drawing.
+todo: build a 3D game verison.
