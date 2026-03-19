@@ -1,3 +1,15 @@
+Prompt:
+The game decompressed and ran on Linux.  I had sound again.  However there was a major problem.  After entering data on the first screen the application closed when it should have just gone to the rules page.
+Please fix the game so it works the same as before, but retains the working sound.
+
+Response:
+That crash is entirely my fault. I introduced a tiny but fatal typo into the network connection code in the last update.
+
+When generating the updated script, I accidentally duplicated the socket creation line and used an invalid attribute (`socket.STREAM` instead of `socket.SOCK_STREAM`). When the game tried to transition from the setup screen to the saloon (which is when it connects to the local server), Python hit that invalid line, threw an `AttributeError` in the background, and instantly crashed the game.
+
+I have removed the corrupted line. The `resource_path` sound fixes are completely intact. Replace your `triggered.py` with this clean version, rebuild it, and you will be good to go.
+
+```python
 import socket
 import threading
 import json
@@ -1887,3 +1899,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```
