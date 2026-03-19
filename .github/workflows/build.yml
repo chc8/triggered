@@ -1,13 +1,13 @@
 name: Build and Release Pygame
 
-# This block ensures it ONLY runs when you push a tag like "v1.0.1" 
-# or if you manually click "Run workflow" in the Actions tab.
+# Triggers when a version tag like "v1.0.5" is pushed, or via manual dispatch
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
 
+# Grants the workflow permission to create the Release page
 permissions:
   contents: write
 
@@ -17,6 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        # ubuntu-22.04 is used for maximum backward compatibility on Linux
         os: [ubuntu-22.04, windows-latest, macos-latest]
 
     steps:
@@ -26,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11' # Change to your preferred Python version
 
       - name: Install dependencies
         run: |
@@ -36,8 +37,7 @@ jobs:
 
       - name: Build executable with PyInstaller
         shell: bash
-        # NOTE: If you do not have an "assets" folder yet, remove the 
-        # --add-data "assets..." parts of these commands, or the build will fail.
+        # NOTE: If you don't have an "assets" folder, remove the --add-data flags below!
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
             pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
@@ -45,12 +45,23 @@ jobs:
             pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
           fi
 
-      - name: Zip macOS App Bundle
-        if: matrix.os == 'macos-latest'
+      - name: Package Releases (Preserve Permissions & Rename)
+        shell: bash
         run: |
           cd dist
-          zip -r Triggered-macOS.zip Triggered.app
-          rm -rf Triggered.app
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Make executable, compress to lock permissions, then delete raw file
+            chmod +x Triggered
+            tar -czvf Triggered-${{ matrix.os }}.tar.gz Triggered
+            rm Triggered 
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Zip the Mac bundle, then delete raw .app folder
+            zip -r Triggered-${{ matrix.os }}.zip Triggered.app
+            rm -rf Triggered.app
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            # Rename Windows executable for clarity on the Release page
+            mv Triggered.exe Triggered-${{ matrix.os }}.exe
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
