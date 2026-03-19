@@ -1,0 +1,49 @@
+Prompt:
+The build completed and released.  I tried to run the Linux app, but the app doesn't run on my Ubuntu machine.  I get the following error:
+[PYI-1418557:ERROR] Failed to extract libX11.so.6: decompression resulted in return code -3!
+[PYI-1418557:ERROR] Failed to extract entry: libX11.so.6.
+
+Response:
+You have officially hit the final boss of cross-platform Python development: **Linux system library compatibility**.
+
+This `decompression resulted in return code -3` error involving `libX11` is incredibly common when distributing Linux binaries. Here is exactly why it happens and how to fix it.
+
+### The Problem: Forward vs. Backward Compatibility
+
+When you tell GitHub Actions to build on `ubuntu-latest`, it uses a very recent version of Ubuntu (currently either 22.04 or 24.04).
+
+PyInstaller bundles your game along with the core system libraries (like `glibc` and `libX11`) present on that GitHub server. The golden rule of Linux binaries is: **They are forward-compatible, but rarely backward-compatible.** If the Ubuntu machine you are testing the game on is older than the GitHub server that built it, your system doesn't know how to decompress or read those newer library files, causing it to crash immediately upon extraction. PyInstaller can also be a bit too aggressive in bundling host system libraries that it really should just leave alone.
+
+### The Fix: Build on an Older Ubuntu Version
+
+The standard industry fix for distributing standalone Linux apps is to build them on the **oldest supported version** of the OS you can. An app built on Ubuntu 20.04 will run perfectly fine on Ubuntu 22.04, 24.04, and most modern Linux distributions (Mint, Fedora, etc.).
+
+All you need to do is change one line in your `build.yml` file.
+
+**Step 1: Update your Matrix Strategy**
+Find the `matrix:` block under your `build` job and change `ubuntu-latest` to `ubuntu-20.04`.
+
+```yaml
+    strategy:
+      matrix:
+        # Change ubuntu-latest to ubuntu-20.04
+        os: [ubuntu-20.04, windows-latest, macos-latest]
+
+```
+
+**Step 2: Commit, Tag, and Push**
+Save the file, commit it, and push a new tag to trigger the build.
+
+```bash
+git commit -am "Downgrade Ubuntu runner to 20.04 for broader Linux compatibility"
+git push
+git tag v1.0.4
+git push origin v1.0.4
+
+```
+
+### A Quick Note on the Artifact Name
+
+Because we changed the matrix name, the downloaded zip file for Linux on your Releases page will now be named `MyPygameApp-ubuntu-20.04` instead of `MyPygameApp-ubuntu-latest`. This is actually helpful, as it clearly indicates to users what baseline system it was built for!
+
+Try that downgraded runner and see if the resulting binary successfully executes on your local machine. It resolves this specific PyInstaller decompression crash the vast majority of the time.
