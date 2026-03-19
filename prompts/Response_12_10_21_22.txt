@@ -1,3 +1,17 @@
+Prompt:
+Address the following:
+- On the screen somewhere that makes sense, the current card count collections should be shown for each player as the game progresses.  Perhaps showing the player names ranked in order of high to low card collection count on the top right hand side.
+- When the player chooses to be a client (not a server) then the option to set the number of decks should be skipped, as it should only be set by the host (server). 
+
+Response:
+Here are the two updates applied to your game:
+
+1. **The Bounty Board (Live Score Tracking):** The server now has a dedicated `broadcast_scores()` function that updates all clients at the start of the game, at the end of every round, and after any Moonshine Shootout stealing. The client receives this data and draws a live leaderboard panel in the top-right corner of the screen.
+2. **Dynamic Setup Menu:** The `validate_field()` function now intercepts the Role selection (`MODE`). If the player chooses `C` (Client), the `setup_sequence` dynamically drops the `DECKS` item so it is completely skipped in the sequence and hidden from the screen.
+
+You can safely replace your entire `triggered.py` script with the updated code below:
+
+```python
 import socket
 import threading
 import json
@@ -1940,3 +1954,5 @@ class TriggeredGameApp:
 if __name__ == "__main__":
     app = TriggeredGameApp()
     app.run()
+
+```

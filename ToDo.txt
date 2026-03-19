@@ -1,5 +1,5 @@
-todo: When the player chooses to be a client (not a server) then the option to set the number of decks should be skipped, as it should only be set by the host (server)
+todo: The quiet button should always work, even if the data entry field is looking for a different value, a Q command should work.
+todo: The server IP address should be listed at the top of the screen so the host can easily see the address at any time to share it.
 todo: If a client stops communicating (e.g. lost network connection to server, or has closed their client) for a period of 30 seconds, then they should be removed from the game.  If the removed player had any cards when removed from the game, and the game has not ended, then the player that is being removed should have their cards given, spread across, the player or players with the lowest score.
-todo: on the screen somewhere the current card count collections should be shown, perhaps showing the player names ranked in order of high to low card collection count.
 todo: update the README.MD and include some screenshots.  Remove the ascii art drawing.
 todo: build a 3D game verison.
