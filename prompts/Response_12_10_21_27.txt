@@ -1,3 +1,24 @@
+Prompt:
+Address the following:
+- Can you make the installer work for older macOS
+- Add the release version to the filename for the installers
+- The main.py file is actually called triggered.py
+
+Response:
+You have excellent timing. Those are three critical refinements to make your build pipeline truly professional.
+
+Here is exactly how these changes are handled in the updated script:
+
+1. **Older macOS Support:** I have downgraded the macOS matrix runner to `macos-12` (Monterey) and added the `MACOSX_DEPLOYMENT_TARGET: "12.0"` 
+environment variable to the PyInstaller step. This forces Apple's compiler to build a binary that works natively on Intel Macs running Monterey, while 
+Rosetta 2 will seamlessly translate it for newer M1/M2/M3 Macs.
+2. **Dynamic Version Filenames:** Instead of hardcoding "v1.1.0" into the script, I used GitHub's built-in `${{ github.ref_name }}` variable. When you 
+push a tag like `v1.1.0`, GitHub will automatically inject that exact text into your `.zip`, `.tar.gz`, and `.exe` filenames.
+3. **Target Script:** `main.py` has been swapped to `triggered.py` across the board.
+
+Here is your final, fully optimized `.github/workflows/build.yml` file. Delete your old workflow code and paste this in:
+
+```yaml
 name: Build and Release Pygame
 
 # Triggers when a version tag like "v1.1.0" is pushed, or via manual dispatch
@@ -94,3 +115,7 @@ jobs:
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Once you commit this and run your standard `git tag v1.1.0` and `git push origin v1.1.0`, your GitHub Release page will populate with perfectly named, 
+cross-platform compatible binaries!
