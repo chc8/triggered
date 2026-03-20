@@ -1,5 +1,4 @@
-todo: The quiet button should always work, even if the data entry field is looking for a different value, a Q command should work.
-todo: The server IP address should be listed at the top of the screen so the host can easily see the address at any time to share it.
-todo: If a client stops communicating (e.g. lost network connection to server, or has closed their client) for a period of 30 seconds, then they should be removed from the game.  If the removed player had any cards when removed from the game, and the game has not ended, then the player that is being removed should have their cards given, spread across, the player or players with the lowest score.
+todo: If a player volunarily joins the moonshine round, and they defend their own collection, but they themselves are faster than all the leaders, then they also share a small portion of the leaders cards with the others.
+todo: The bounty board should lastly update at the very end, to ensure any last changes are reflected (e.g. moonshine round, or when a player loses connection and their cards are scattered after just after the last round).
 todo: update the README.MD and include some screenshots.  Remove the ascii art drawing.
 todo: build a 3D game verison.

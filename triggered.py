@@ -60,7 +60,6 @@ class TriggeredServer:
         self.lock = threading.RLock() 
         self.trigger_calls = [] 
         self.game_active = False
-        self.ai_added = False
         self.round_num = 1
         self.trigger_phase = False 
         self.is_paused = False
@@ -72,10 +71,67 @@ class TriggeredServer:
         self.moonshine_risk_players = []
         self.moonshine_zero_players = []
         
+        # Instantly spawn AIs into the lobby so they are on the board before the game starts
+        available_ai_names = random.sample(AI_NAMES_POOL, min(self.ai_count, len(AI_NAMES_POOL)))
+        for i in range(self.ai_count):
+            ai_player = {
+                'name': available_ai_names[i] if i < len(available_ai_names) else f"Bot-{i}",
+                'thumper': round(random.uniform(90.0, 220.0), 1), 
+                'is_ai': True,
+                'score': 0
+            }
+            self.players.append(ai_player)
+        
     def start(self):
         self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(8)
         threading.Thread(target=self.accept_clients, daemon=True).start()
+        threading.Thread(target=self.timeout_checker, daemon=True).start()
+
+    def timeout_checker(self):
+        """ Runs in background to kick clients that haven't pinged in 30 seconds """
+        while True:
+            time.sleep(5)
+            with self.lock:
+                now = time.time()
+                for conn, p_info in list(self.clients.items()):
+                    # Give players 30 seconds before assuming they dropped
+                    if now - p_info.get('last_seen', now) > 30:
+                        self.remove_player(p_info['name'], "timed out")
+
+    def remove_player(self, player_name, reason="disconnected"):
+        """ Safely handles player removal, socket closure, and card redistribution """
+        player_to_remove = next((p for p in self.players if p['name'] == player_name), None)
+        if not player_to_remove: return
+        
+        # Close connection if it exists
+        conn_to_close = next((conn for conn, p in self.clients.items() if p['name'] == player_name), None)
+        if conn_to_close:
+            try: conn_to_close.close()
+            except: pass
+            if conn_to_close in self.clients:
+                del self.clients[conn_to_close]
+        
+        self.players.remove(player_to_remove)
+        
+        cards = player_to_remove.get('score', 0)
+        self.broadcast({'msg': f"\n[!] {player_name} {reason} and left the table!"})
+        
+        if cards > 0 and self.players and self.game_active:
+            min_score = min(p['score'] for p in self.players)
+            lowest_players = [p for p in self.players if p['score'] == min_score]
+            share = cards // len(lowest_players)
+            remainder = cards % len(lowest_players)
+            
+            for i, p in enumerate(lowest_players):
+                p['score'] += share + (1 if i < remainder else 0)
+            
+            lp_names = ", ".join([p['name'] for p in lowest_players])
+            self.broadcast({'msg': f"Their {cards} cards were scattered to the lowest bounty hunters: {lp_names}."})
+        
+        # Tell all clients to visually delete this player's card from the screen
+        self.broadcast({'action': 'remove_player', 'name': player_name})
+        self.broadcast_scores()
 
     def accept_clients(self):
         while True:
@@ -123,10 +179,27 @@ class TriggeredServer:
                 player_info['conn'] = conn
                 player_info['is_ai'] = False
                 player_info['score'] = 0
+                player_info['last_seen'] = time.time()
+                
                 with self.lock:
+                    # Enforce Maximum 8 players
+                    if len(self.players) >= 8:
+                        ai_players = [p for p in self.players if p.get('is_ai')]
+                        if ai_players:
+                            # Boot an AI to make room for the human
+                            ai_to_kick = random.choice(ai_players)
+                            self.remove_player(ai_to_kick['name'], "was booted from the saloon to make room")
+                        else:
+                            # Table is full of actual humans
+                            conn.sendall((json.dumps({'action': 'quit', 'msg': "The table is full! (Max 8 players)"}) + "\n").encode())
+                            conn.close()
+                            return # Exit thread
+
                     self.clients[conn] = player_info
                     self.players.append(player_info)
+                    
                 self.broadcast({'msg': f"Gunslinger {player_info['name']} moseyed into the saloon!"})
+                self.broadcast_scores()
                 
             buffer = ""
             while True:
@@ -143,7 +216,12 @@ class TriggeredServer:
                         parsed = json.loads(line)
                         action = parsed.get('action')
                         
-                        if action == 'trigger' and self.game_active and not self.is_paused:
+                        if action == 'ping':
+                            with self.lock:
+                                if conn in self.clients:
+                                    self.clients[conn]['last_seen'] = time.time()
+                            continue
+                        elif action == 'trigger' and self.game_active and not self.is_paused:
                             self.register_trigger(player_info['name'])
                         elif action == 'toggle_pause':
                             self.is_paused = not self.is_paused
@@ -162,9 +240,10 @@ class TriggeredServer:
         except:
             pass
         finally:
-            if conn in self.clients:
-                del self.clients[conn]
-            conn.close()
+            with self.lock:
+                if conn in self.clients:
+                    name = self.clients[conn]['name']
+                    self.remove_player(name, "lost connection")
 
     def broadcast(self, message):
         msg_str = json.dumps(message) + "\n"
@@ -184,18 +263,6 @@ class TriggeredServer:
         with self.lock:
             if self.game_active: return
             
-            if not self.ai_added:
-                available_ai_names = random.sample(AI_NAMES_POOL, min(self.ai_count, len(AI_NAMES_POOL)))
-                for i in range(self.ai_count):
-                    ai_player = {
-                        'name': available_ai_names[i] if i < len(available_ai_names) else f"Bot-{i}",
-                        'thumper': round(random.uniform(90.0, 220.0), 1), 
-                        'is_ai': True,
-                        'score': 0
-                    }
-                    self.players.append(ai_player)
-                self.ai_added = True
-
             if len(self.players) < 2:
                 self.broadcast({'msg': "Hold yer horses! We need at least 2 gunslingers to start."})
                 return
@@ -287,7 +354,7 @@ class TriggeredServer:
 
             if match_exists:
                 for p in tied_objs:
-                    if p['is_ai']:
+                    if p.get('is_ai'):
                         if random.random() < 0.15:
                             reaction = random.uniform(0.15, 0.7)
                         else:
@@ -328,7 +395,7 @@ class TriggeredServer:
                             return w, tie_pot
             else:
                 for p in tied_objs:
-                    if p['is_ai']:
+                    if p.get('is_ai'):
                         if random.random() < 0.05: 
                             reaction = random.uniform(0.5, 2.5)
                             threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
@@ -396,7 +463,7 @@ class TriggeredServer:
         
         participants = high_players + zero_players
         for p in participants:
-            if p['is_ai']:
+            if p.get('is_ai'):
                 if random.random() < 0.15: 
                     reaction = random.uniform(0.15, 0.6)
                 else:
@@ -457,7 +524,9 @@ class TriggeredServer:
         dealer_idx = self.players.index(first_dealer)
         original_dealer = first_dealer['name']
         
-        while len(deck) >= len(self.players) + 1:
+        # Adding check len(self.players) > 1 ensures game doesn't crash if everyone drops
+        while len(deck) >= len(self.players) + 1 and len(self.players) > 1:
+            dealer_idx = dealer_idx % len(self.players)
             dealer = self.players[dealer_idx]
             self.broadcast({'msg': f"\n--- ROUND {self.round_num} --- Dealer {dealer['name']} is shufflin'..."})
             self.safe_sleep(1.5)
@@ -487,7 +556,7 @@ class TriggeredServer:
 
             if match_exists:
                 for p in self.players:
-                    if p['is_ai']:
+                    if p.get('is_ai'):
                         if random.random() < 0.15: 
                             reaction = random.uniform(0.15, 0.7)
                         else:
@@ -532,7 +601,7 @@ class TriggeredServer:
 
             else:
                 for p in self.players:
-                    if p['is_ai']:
+                    if p.get('is_ai'):
                         if random.random() < 0.02: 
                             reaction = random.uniform(0.8, 3.5)
                             threading.Timer(reaction, self.register_trigger, args=(p['name'],)).start()
@@ -568,7 +637,7 @@ class TriggeredServer:
                         else:
                             winner_name = high_players[0]
                             self.broadcast({'msg': f"{winner_name} holds the highest card!"})
-                            winner = next(p for p in self.players if p['name'] == winner_name)
+                            winner = next((p for p in self.players if p['name'] == winner_name), None)
 
                 if initiate_quickdraw:
                     self.broadcast({'msg': f"Tie for the high card between {', '.join(qd_ties)}! Initiating Quickdraw Round!"})
@@ -588,25 +657,30 @@ class TriggeredServer:
 
         self.broadcast({'msg': "\n=== GAME OVER! The deck ran dry. ==="})
         remaining = len(deck)
-        first_dealer_obj = next(p for p in self.players if p['name'] == original_dealer)
-        first_dealer_obj['score'] += remaining
-        self.broadcast({'msg': f"First dealer {original_dealer} pockets the remaining {remaining} cards."})
+        
+        # Failsafe if the original dealer was kicked out mid-game
+        first_dealer_obj = next((p for p in self.players if p['name'] == original_dealer), None)
+        if first_dealer_obj:
+            first_dealer_obj['score'] += remaining
+            self.broadcast({'msg': f"First dealer {original_dealer} pockets the remaining {remaining} cards."})
+            
         self.broadcast_scores()
         self.safe_sleep(2.0)
         
-        # Check for Moonshine Shootout
-        high_score = max(p['score'] for p in self.players)
-        high_players = [p for p in self.players if p['score'] == high_score]
-        zero_players = [p for p in self.players if p['score'] == 0]
-        
-        if high_score > 0 and len(zero_players) > 0:
-            self.moonshine_shootout(high_players, zero_players)
-            self.safe_sleep(3.0)
-        
-        self.players.sort(key=lambda x: x['score'], reverse=True)
-        standings = "\nFINAL BOUNTIES (Scores):\n" + "\n".join([f"  {p['name']}: {p['score']} cards" for p in self.players])
-        self.broadcast({'msg': standings})
-        
+        if self.players:
+            # Check for Moonshine Shootout
+            high_score = max(p['score'] for p in self.players)
+            high_players = [p for p in self.players if p['score'] == high_score]
+            zero_players = [p for p in self.players if p['score'] == 0]
+            
+            if high_score > 0 and len(zero_players) > 0:
+                self.moonshine_shootout(high_players, zero_players)
+                self.safe_sleep(3.0)
+            
+            self.players.sort(key=lambda x: x['score'], reverse=True)
+            standings = "\nFINAL BOUNTIES (Scores):\n" + "\n".join([f"  {p['name']}: {p['score']} cards" for p in self.players])
+            self.broadcast({'msg': standings})
+            
         self.game_active = False
         self.broadcast({'msg': "\nHost can press 'R' to play a new game, or close the window to exit."})
 
@@ -956,12 +1030,29 @@ class TriggeredGameApp:
         pygame.display.set_caption("TRIGGERED - High Res Edition" + (" [HOST]" if self.is_host else ""))
         
         if self.is_host:
+            # Bypass the loop validator to guarantee the AI count variable is rigidly populated
+            try:
+                ai_qty = int(self.setup_data.get('NETWORK', '0'))
+            except:
+                ai_qty = 0
+            self.ai_count = ai_qty
+            
             self.server = TriggeredServer(self.port, self.ai_count, self.num_decks)
             self.server.start()
             time.sleep(0.5)
             self.host_ip = '127.0.0.1'
             
         self.connect_to_server()
+
+    def send_heartbeats(self):
+        """ Keeps the client connection alive by pinging the server """
+        while self.running and self.client_socket:
+            try:
+                msg = json.dumps({'action': 'ping'}) + "\n"
+                self.client_socket.sendall(msg.encode())
+            except:
+                pass
+            time.sleep(5)
 
     def connect_to_server(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -976,8 +1067,6 @@ class TriggeredGameApp:
             self.log_game_text("Welcome to the Saloon!")
             
             if self.is_host:
-                self.add_log_message(f"Server IP: {get_local_ip()} | Port: {self.port}", SVGA['TEXT_BLUE'])
-                self.log_game_text(f"Server IP: {get_local_ip()} | Port: {self.port}")
                 self.add_log_message("You are the Host. Press 'S' to Start.", SVGA['GOLD'])
                 self.log_game_text("You are the Host. Press 'S' to Start.")
             else:
@@ -992,6 +1081,7 @@ class TriggeredGameApp:
             self.log_game_text("Press 'P' to Pause.")
             
             threading.Thread(target=self.receive_messages, daemon=True).start()
+            threading.Thread(target=self.send_heartbeats, daemon=True).start()
         except ConnectionRefusedError:
             self.setup_idx = self.setup_sequence.index('PORT')
             self.setup_error = "Connection Failed. Check IP/Port and try again."
@@ -1027,6 +1117,14 @@ class TriggeredGameApp:
                         if isinstance(msg, dict):
                             if msg.get('action') == 'update_scores':
                                 self.current_scores = msg.get('scores', {})
+                                continue
+                                
+                            if msg.get('action') == 'remove_player':
+                                name_to_remove = msg.get('name')
+                                if name_to_remove in self.player_cards:
+                                    del self.player_cards[name_to_remove]
+                                if name_to_remove in self.all_player_names:
+                                    self.all_player_names.remove(name_to_remove)
                                 continue
                                 
                             if 'msg' in msg:
@@ -1675,13 +1773,24 @@ class TriggeredGameApp:
         self.screen.blit(panel_rect, (0, 0))
         pygame.draw.line(self.screen, SVGA['GOLD'], (self.left_panel_w, 0), (self.left_panel_w, self.res[1]), 3)
         
-        banner = self.font.render(f"GUNSLINGER: {self.name} | THUMPER: {self.thumper}", True, SVGA['GOLD'])
+        # --- DRAW SEPARATE BANNERS TO PREVENT OVERLAP ---
+        banner_text = f"GUNSLINGER: {self.name} | THUMPER: {self.thumper}"
+        banner = self.font.render(banner_text, True, SVGA['GOLD'])
         self.screen.blit(banner, (20, 20))
-        pygame.draw.line(self.screen, SVGA['TEXT_LIGHT'], (20, 50), (self.left_panel_w - 20, 50), 1)
+        
+        if self.is_host:
+            ip_text = f"SERVER IP: {get_local_ip()}:{self.port}"
+            ip_surf = self.font.render(ip_text, True, SVGA['TEXT_BLUE'])
+            self.screen.blit(ip_surf, (20, 48))
+            pygame.draw.line(self.screen, SVGA['TEXT_LIGHT'], (20, 75), (self.left_panel_w - 20, 75), 1)
+            log_start_y = 85
+        else:
+            pygame.draw.line(self.screen, SVGA['TEXT_LIGHT'], (20, 50), (self.left_panel_w - 20, 50), 1)
+            log_start_y = 60
         
         for msg in self.log_messages:
             msg.update()
-            if msg.y > 60 and msg.y < self.res[1]: 
+            if msg.y > log_start_y - 10 and msg.y < self.res[1]: 
                 text_surface = self.font.render(msg.text, True, msg.color)
                 self.screen.blit(text_surface, (20, msg.y))
 
@@ -1814,6 +1923,22 @@ class TriggeredGameApp:
                         except:
                             pass
                 elif event.type == pygame.KEYDOWN:
+                    
+                    # 1. THE GLOBAL QUIET BUTTON
+                    if event.key == pygame.K_q:
+                        self.sound_enabled = not self.sound_enabled
+                        if self.sound_enabled:
+                            try: pygame.mixer.music.set_volume(0.3)
+                            except: pass
+                            self.add_log_message("Sound: ON", SVGA['TEXT_GREEN'])
+                            self.log_game_text("Sound: ON")
+                        else:
+                            try: pygame.mixer.music.set_volume(0.0)
+                            except: pass
+                            self.add_log_message("Sound: MUTED", SVGA['TEXT_RED'])
+                            self.log_game_text("Sound: MUTED")
+                        continue # Prevents 'Q' from doing anything else (like typing in a box)
+                    
                     if self.state == 'SETUP':
                         self.handle_setup_input(event)
                         
@@ -1849,19 +1974,6 @@ class TriggeredGameApp:
                         if event.key == pygame.K_p:
                             msg = json.dumps({'action': 'toggle_pause'}) + "\n"
                             self.client_socket.sendall(msg.encode())
-                            
-                        elif event.key == pygame.K_q:
-                            self.sound_enabled = not self.sound_enabled
-                            if self.sound_enabled:
-                                try: pygame.mixer.music.set_volume(0.3)
-                                except: pass
-                                self.add_log_message("Sound: ON", SVGA['TEXT_GREEN'])
-                                self.log_game_text("Sound: ON")
-                            else:
-                                try: pygame.mixer.music.set_volume(0.0)
-                                except: pass
-                                self.add_log_message("Sound: MUTED", SVGA['TEXT_RED'])
-                                self.log_game_text("Sound: MUTED")
                         
                         elif event.key == pygame.K_t: 
                             if self.show_moonshine_jug:
