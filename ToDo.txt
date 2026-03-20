@@ -1,4 +1,2 @@
-todo: If a player volunarily joins the moonshine round, and they defend their own collection, but they themselves are faster than all the leaders, then they also share a small portion of the leaders cards with the others.
-todo: The bounty board should lastly update at the very end, to ensure any last changes are reflected (e.g. moonshine round, or when a player loses connection and their cards are scattered after just after the last round).
 todo: update the README.MD and include some screenshots.  Remove the ascii art drawing.
 todo: build a 3D game verison.
