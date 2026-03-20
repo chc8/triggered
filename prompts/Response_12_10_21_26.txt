@@ -1,3 +1,9 @@
+Prompt:
+Can you render this to a README.MD file
+
+Response:
+Here is the fully refreshed and updated README file for the v1.1.0 release, incorporating the screenshot, the new game features, and the proper repository clone link.
+
 ```markdown
 # 🌵 TRIGGERED v1.1.0
 
@@ -37,7 +43,7 @@ If you match the Bullseye, be the first to reach for your iron. But draw too ear
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/chc8/triggered.git
+git clone [https://github.com/chc8/triggered.git](https://github.com/chc8/triggered.git)
 cd triggered
 
 ```
