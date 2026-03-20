@@ -1,0 +1,250 @@
+Prompt:
+Address the following:
+- Ubuntu needs to be 22.04 (20.04 unavailable now with github actions)
+- macOS needs to be higher than macos-12 because github actions doesn't support it.  I still need something that will run on Monteray.
+
+Response:
+GitHub routinely deprecates older runners, so it's normal to have to bump these versions every year or so.
+
+Here is exactly how to handle both issues:
+
+### 1. The Ubuntu Bump
+This is a straightforward change in the matrix from `ubuntu-20.04` to `ubuntu-22.04`. It will slightly raise the minimum required `glibc` version for 
+Linux users, but 22.04 is currently the oldest supported standard runner and will work perfectly fine for the vast majority of modern Linux desktops.
+
+### 2. The macOS Monterey Fix
+If `macos-12` is deprecated, you must bump the runner to `macos-13` (Ventura). However, you can still compile for Monterey! 
+
+The trick is that we will keep the `MACOSX_DEPLOYMENT_TARGET: "12.0"` environment variable exactly where it is. This explicitly tells the Ventura 
+server's compiler: *"I know you are running macOS 13, but I need you to restrict your library usage to build an app that is compatible down to macOS 
+12."*
+
+Additionally, `macos-13` is the last standard GitHub runner that uses **Intel (x86_64)** processors (the `macos-14` and `macos-latest` runners default 
+to Apple Silicon M1). Using `macos-13` ensures your game runs natively on older Intel Macs, while Rosetta 2 will effortlessly translate it for newer 
+M-series Macs.
+
+---
+
+### The Updated `build.yml`
+
+Replace the contents of your `.github/workflows/build.yml` file with this updated version:
+
+```yaml
+name: Build and Release Pygame
+
+# Triggers when a version tag like "v1.1.0" is pushed, or via manual dispatch
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Grants the workflow permission to create the Release page
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # Bumped to 22.04 and 13 due to GitHub runner deprecations
+        os: [ubuntu-22.04, windows-latest, macos-13]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' 
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable with PyInstaller
+        shell: bash
+        env:
+          # Forces the macOS 13 compiler to target older systems (Monterey)
+          MACOSX_DEPLOYMENT_TARGET: "12.0" 
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
+          else
+            pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
+          fi
+
+      - name: Package Releases (Preserve Permissions, Rename & Add Version)
+        shell: bash
+        run: |
+          cd dist
+          # Dynamically grab the tag you just pushed (e.g., v1.1.0)
+          VERSION=${{ github.ref_name }}
+          
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Make executable, compress to lock permissions, then delete raw file
+            chmod +x Triggered
+            tar -czvf Triggered-$VERSION-${{ matrix.os }}.tar.gz Triggered
+            rm Triggered 
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Zip the Mac bundle, then delete raw .app folder
+            zip -r Triggered-$VERSION-${{ matrix.os }}.zip Triggered.app
+            rm -rf Triggered.app
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            # Rename Windows executable for clarity on the Release page
+            mv Triggered.exe Triggered-$VERSION-${{ matrix.os }}.exe
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          # The artifact name itself doesn't need the version, just the files inside
+          name: Triggered-${{ matrix.os }}
+          path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Double-check that this step only runs for tagged releases
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+
+Prompt 2:
+macos-13 is also no longer supported after Dec 2025.  Find another solution.
+
+Response 2:
+You are absolutely right to look ahead on that. GitHub is aggressive with its runner deprecation cycle, and since `macos-13` was the last standard 
+runner to use Intel (x86_64) architecture by default, moving to `macos-14` or `macos-latest` forces you onto Apple Silicon (M1/M2/M3) servers.
+
+If you build natively on an Apple Silicon runner, PyInstaller outputs an ARM64 binary. That completely locks out anyone running an older Intel Mac, 
+even if you set the deployment target to Monterey.
+
+### The "Rosetta 2" Workaround
+
+We can trick the modern, Apple Silicon-based `macos-latest` runner into building a backward-compatible Intel application. 
+
+We do this by forcing the `setup-python` action to install the **x64 (Intel) version of Python**. The Mac runner will seamlessly use its built-in 
+Rosetta 2 translator to run this Intel version of Python, which in turn forces PyInstaller to spit out an Intel-based executable. 
+
+* **Intel Macs on Monterey:** The game will run natively.
+* **M-Series Macs on Sonoma/Sequoia:** The game will run via their local Rosetta 2 translator.
+
+Here is your future-proofed `build.yml` file. Notice the updated matrix and the new `architecture: 'x64'` line under the Python setup step.
+
+```yaml
+name: Build and Release Pygame
+
+# Triggers when a version tag like "v1.1.0" is pushed, or via manual dispatch
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Grants the workflow permission to create the Release page
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # Using modern runners, but forcing backward compatibility in the steps below
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' 
+          architecture: 'x64' # CRITICAL: Forces Intel Python on M-series Mac runners
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable with PyInstaller
+        shell: bash
+        env:
+          # Forces the modern macOS compiler to target Monterey libraries
+          MACOSX_DEPLOYMENT_TARGET: "12.0" 
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            pyinstaller --onefile --windowed --add-data "assets;assets" --name Triggered triggered.py
+          else
+            pyinstaller --onefile --windowed --add-data "assets:assets" --name Triggered triggered.py
+          fi
+
+      - name: Package Releases (Preserve Permissions, Rename & Add Version)
+        shell: bash
+        run: |
+          cd dist
+          # Dynamically grab the tag you just pushed (e.g., v1.1.0)
+          VERSION=${{ github.ref_name }}
+          
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            # Make executable, compress to lock permissions, then delete raw file
+            chmod +x Triggered
+            tar -czvf Triggered-$VERSION-${{ matrix.os }}.tar.gz Triggered
+            rm Triggered 
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            # Zip the Mac bundle, then delete raw .app folder
+            zip -r Triggered-$VERSION-${{ matrix.os }}.zip Triggered.app
+            rm -rf Triggered.app
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            # Rename Windows executable for clarity on the Release page
+            mv Triggered.exe Triggered-$VERSION-${{ matrix.os }}.exe
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Triggered-${{ matrix.os }}
+          path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
