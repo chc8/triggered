@@ -1,2 +1,24 @@
 .venv/
 *.log
+
+# Godot-specific ignores
+.godot/
+*.tmp
+*.temp
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores (if using C#)
+.mono/
+data_/
+mono_crash*.json
+
+# Export-specific ignores
+# If you export to a 'build' folder, ignore it
+build/
+
+# Do NOT ignore .import files or .uid files
+# These contain crucial metadata for your assets
+
+Triggered_3D/addons/
