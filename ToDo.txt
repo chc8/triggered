@@ -1,3 +1,59 @@
-todo: build a 3D game verison.
+Phase 1: Environment & Engine Setup
+
+    Select Godot 4 (GDExtension): Install Godot 4.x. It is lightweight, supports Python-like scripting, and exports natively to Windows, macOS, and Linux.
+
+    Establish the Bridge: Create a localized communication protocol (like a Unix socket or local TCP) so the 3D frontend can "talk" to your existing TriggeredServer logic.
+
+    Project Scaling: Set up a 3D scene with a "World Environment" node to handle high-dynamic-range (HDR) lighting for that dusty, Western atmosphere.
+
+Phase 2: The "Wanted" Entryway
+
+    3D UI Integration: Instead of a flat screen, place the "Wanted" form as a 3D mesh (a piece of parchment) hanging on a wooden post.
+
+    Interactive Input: Map the setup_data fields (Name, Age, Thumper) to text-entry fields that appear "handwritten" onto the parchment mesh as the player types.
+
+    Tumbleweed Physics: Replace the 2D math-based tumbleweeds with 3D RigidBody nodes that react to wind forces and terrain collision.
+
+Phase 3: The Saloon & Transition
+
+    First-Person Controller: Implement a simple character controller to walk from the "Wanted" post toward the saloon doors.
+
+    Hinge Physics: Set up the saloon doors with a HingeJoint3D so they physically swing open when the player’s collision box pushes through them.
+
+    Table "Lock-In": Create a "Seat" trigger at the poker table. When the player interacts with it, lerp the camera from the character's eyes to a fixed "Game View" overlooking the table.
+
+Phase 4: 3D Gameplay Mechanics
+
+    Card Mesh Generation: Create a single high-quality 3D card mesh. Use a shader to swap the "Face" texture based on the SUITS and VALUES sent by the server.
+
+    The Dealer's Hand: Replace text reveals with a 3D character model (e.g., "Cyber-Doc") that physically deals cards and performs a "Click Click" animation when the trigger window opens.
+
+    The Shotgun/Pistol: When the player presses 'T', trigger a muzzle flash particle effect and a recoil animation on a 3D revolver model.
+
+Phase 5: The Moonshine Climax
+
+    The Physics Jug: Model a moonshine jug as a breakable mesh. When the "Moonshine Shootout" begins, use a projectile path to "throw" the jug into the 3D air.
+
+    Dynamic Breakage: Use a "Cell Fracture" tool to make the jug shatter into multiple pieces when hit, rather than just drawing 2D bullet holes.
+
+    Liquid Particles: Implement a 3D particle system for the moonshine splash, using transparent blue/yellow droplets that react to the saloon floor.
+
+Phase 6: Automated Asset Pipeline
+
+    AI Mesh Generation: Use tools like Meshy.ai or Rodin to generate the low-poly "Thumper" items (hats, spurs, whiskey glasses) automatically from text prompts.
+
+    Texture Painting: Use Polyhive to apply "Weathered Wood" and "Rusty Iron" textures to your saloon meshes without manual UV painting.
+
+    Character Skins: Generate AI bot skins (like "Robo-Calamity") using Ready Player Me to ensure all 8 potential players have unique 3D avatars.
+
+Phase 7: Dynamic Audio Design
+
+    Spatial Audio: Use Godot’s AudioStreamPlayer3D so the honky-tonk piano sounds quieter as you walk away from it and louder as you enter the saloon.
+
+    The Heartbeat (Thumper): Play a low-frequency bass thud that increases in tempo based on the player's Thumper stat during the TRIGGER_WINDOW.
+
+    Gunshot Variety: Use a randomized pitch-shifter for the gunshot.wav so every "Bang" sounds slightly different.
+
+Next Step Recommendation: I suggest we start with Phase 1 & 2: setting up the Godot project and turning your "Wanted" form into a 3D object. Would you like to start with the Godot setup instructions?
 
 
