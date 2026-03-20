@@ -1,3 +1,5 @@
-todo: build a 3D game verison.
+todo: If a player joins mid game, they see the bulleye card, but the players cards don't show, otherwise the game seems to still work as normal.
+todo: When starting another game with the R command, the scoreboard should clear, and the shadow for the moonshine jug should also clear, at the same time the R command 
+is given (no delay)
 
 
