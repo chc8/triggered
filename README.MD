@@ -1,4 +1,3 @@
-```markdown
 # 🌵 TRIGGERED v1.1.0
 
 ![Triggered Saloon Standoff](assets/screenshot.png)
@@ -39,8 +38,6 @@ If you match the Bullseye, be the first to reach for your iron. But draw too ear
 ```bash
 git clone https://github.com/chc8/triggered.git
 cd triggered
-
-```
 
 2. **Install dependencies:**
 
